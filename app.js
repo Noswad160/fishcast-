@@ -118,9 +118,16 @@ function closeSheet() {
 }
 // Swipe a sheet down to close it: drag from the handle, or from anywhere once the sheet is scrolled to the top.
 (function sheetSwipe() {
-  const panel = $("#sheet .panel"), scrim = $("#sheet .scrim");
-  let startY = 0, dy = 0, tracking = false, dragging = false, samples = [];
-  const reset = () => { panel.style.transition = panel.style.transform = scrim.style.transition = scrim.style.opacity = ""; };
+  const panel = $("#sheet .panel"), scrim = $("#sheet .scrim"), EASE = "cubic-bezier(.2, .8, .2, 1)";
+  let startY = 0, offset = 0, dy = 0, h = 1, tracking = false, dragging = false, samples = [], frame = 0;
+  // Writes happen once per screen refresh, and nothing is measured mid-drag, so the phone only slides a layer.
+  const paint = () => { frame = 0; panel.style.transform = `translate3d(0, ${dy}px, 0)`; scrim.style.opacity = String(Math.max(0, 1 - dy / h)); };
+  const settle = (to, ms, done) => {
+    if (frame) { cancelAnimationFrame(frame); frame = 0; }
+    panel.style.transition = `transform ${ms}ms ${EASE}`; scrim.style.transition = `opacity ${ms}ms ${EASE}`;
+    panel.style.transform = to; scrim.style.opacity = to ? "0" : "";
+    setTimeout(() => { done && done(); panel.classList.remove("dragging"); panel.style.transition = panel.style.transform = scrim.style.transition = scrim.style.opacity = ""; }, ms);
+  };
   panel.addEventListener("touchstart", e => {
     tracking = e.touches.length === 1 && (panel.scrollTop <= 0 || !!e.target.closest(".grab"));
     dragging = false; dy = 0; startY = e.touches[0].clientY; samples = [];
@@ -130,26 +137,25 @@ function closeSheet() {
     const d = e.touches[0].clientY - startY;
     if (!dragging) {
       if (d < -4) { tracking = false; return; } // scrolling up: let the sheet scroll
-      if (d < 8) return;
-      dragging = true;
+      if (d < 6) return;
+      dragging = true; offset = d; h = panel.offsetHeight || 1; // measure once, and start from the finger without a jump
+      panel.classList.add("dragging"); panel.style.transition = scrim.style.transition = "none";
     }
     e.preventDefault();
-    dy = Math.max(0, d);
+    dy = Math.max(0, d - offset);
     const now = performance.now(); samples.push([now, dy]); while (samples.length > 2 && now - samples[0][0] > 100) samples.shift();
-    panel.style.transition = "none"; panel.style.transform = `translateY(${dy}px)`;
-    scrim.style.opacity = String(Math.max(0, 1 - dy / panel.offsetHeight));
+    if (!frame) frame = requestAnimationFrame(paint);
   }, { passive: false });
   const end = () => {
     tracking = false;
     if (!dragging) return;
     dragging = false;
     // Speed over the last ~100 ms, like iOS: a quick flick closes even if the drag was short.
-    const [t0, y0] = samples[0] || [0, 0], dt = performance.now() - t0, flick = dt > 0 && dt < 250 && (dy - y0) / dt > 0.5;
-    panel.style.transition = "transform .2s ease-out"; scrim.style.transition = "opacity .2s ease-out";
-    if (flick || dy > Math.min(160, panel.offsetHeight * 0.25)) {
-      panel.style.transform = "translateY(100%)"; scrim.style.opacity = "0";
-      setTimeout(() => { closeSheet(); reset(); }, 200);
-    } else { panel.style.transform = ""; scrim.style.opacity = ""; setTimeout(reset, 200); }
+    const [t0, y0] = samples[0] || [0, 0], dt = performance.now() - t0, v = dt > 0 && dt < 250 ? (dy - y0) / dt : 0;
+    if (v > 0.5 || dy > Math.min(160, h * 0.25)) {
+      const ms = Math.round(Math.min(280, Math.max(140, (h - dy) / Math.max(v, 1.4)))); // faster flicks finish faster
+      settle(`translate3d(0, ${h}px, 0)`, ms, closeSheet);
+    } else settle("", 220);
   };
   panel.addEventListener("touchend", end);
   panel.addEventListener("touchcancel", end);
