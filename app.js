@@ -116,6 +116,21 @@ function closeSheet() {
   $("#sheet").hidden = true; document.body.classList.remove("locked"); $("#sheetBody").innerHTML = "";
   if (sheetReturn && sheetReturn.focus) sheetReturn.focus({ preventScroll: true });
 }
+// iOS Safari ignores overflow:hidden on the body for touch scrolling, so while a sheet is open, stop any
+// finger scroll that would move the page behind: outside the sheet always, inside it once it hits an edge.
+(function lockBackground() {
+  let lastY = 0;
+  document.addEventListener("touchstart", e => { lastY = e.touches[0].clientY; }, { passive: true });
+  document.addEventListener("touchmove", e => {
+    if ($("#sheet").hidden) return;
+    const y = e.touches[0].clientY, down = y > lastY; lastY = y;
+    const panel = e.target.closest("#sheet .panel");
+    if (!panel) { e.preventDefault(); return; }
+    const atTop = panel.scrollTop <= 0, atBottom = panel.scrollTop + panel.clientHeight >= panel.scrollHeight - 1;
+    if ((atTop && down) || (atBottom && !down)) e.preventDefault();
+  }, { passive: false });
+})();
+
 // Swipe a sheet down to close it: drag from the handle, or from anywhere once the sheet is scrolled to the top.
 (function sheetSwipe() {
   const panel = $("#sheet .panel"), scrim = $("#sheet .scrim"), EASE = "cubic-bezier(.2, .8, .2, 1)";
