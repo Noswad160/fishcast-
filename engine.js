@@ -227,7 +227,7 @@ function deriveHours(hours) {
 async function loadLive(spot) {
   const q = new URLSearchParams({
     latitude: spot.lat, longitude: spot.lon,
-    hourly: "temperature_2m,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,precipitation",
+    hourly: "temperature_2m,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,precipitation,weather_code",
     temperature_unit: "fahrenheit", wind_speed_unit: "mph", precipitation_unit: "inch",
     timeformat: "unixtime", timezone: "auto", past_days: 7, forecast_days: 3,
   });
@@ -238,7 +238,7 @@ async function loadLive(spot) {
   const hours = H.time.map((t, i) => ({
     t: t * 1000, air: pick("temperature_2m", i), pres: pick("pressure_msl", i) * 0.02953,
     wind: pick("wind_speed_10m", i), dir: pick("wind_direction_10m", i), gust: pick("wind_gusts_10m", i),
-    cloud: pick("cloud_cover", i), precip: pick("precipitation", i),
+    cloud: pick("cloud_cover", i), precip: pick("precipitation", i), code: H.weather_code ? pick("weather_code", i) : null,
   }));
   deriveHours(hours);
   const cond = { mode: "live", hours, tz: j.utc_offset_seconds || 0, fetchedAt: Date.now(), sst: null, wave: null, gauge: await gaugeP };
@@ -617,4 +617,23 @@ function reportCard(trips, catches) {
     need: { trips: Math.max(0, MIN_TRIPS - done.length), hours: Math.max(0, MIN_HOURS - all.hours), fish: Math.max(0, MIN_FISH - all.fish) } };
 }
 
-if (typeof module !== "undefined") module.exports = { scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };
+/* ---------------------------------------------------------------- scene: what the sky looks like at the spot right now */
+// sky from the sun's height at the spot (so it follows the spot's own time zone); wx from the current hour's weather.
+// Weather codes are WMO codes as Open-Meteo reports them.
+function sceneOf(spot, cond, ms = Date.now()) {
+  const alt = bodyAlt(ms, spot.lat, spot.lon, sunCoords);
+  const sky = alt < -6 ? "night" : alt < 6 ? (bodyAlt(ms + 9e5, spot.lat, spot.lon, sunCoords) > alt ? "dawn" : "dusk") : "day";
+  let wx = "clear";
+  const h = cond && cond.hours && (cond.hours.find(x => x.t <= ms && ms < x.t + hourMs) || null);
+  if (h) {
+    const c = h.code;
+    wx = c >= 95 ? "storm"
+      : (c >= 71 && c <= 77) || c === 85 || c === 86 ? "snow"
+      : c === 45 || c === 48 ? "fog"
+      : (c >= 51 && c <= 67) || (c >= 80 && c <= 82) || h.precip >= 0.02 ? "rain"
+      : h.cloud >= 70 ? "cloudy" : h.cloud >= 30 ? "partly" : "clear";
+  }
+  return { sky, wx };
+}
+
+if (typeof module !== "undefined") module.exports = { sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };

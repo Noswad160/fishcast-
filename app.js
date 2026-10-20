@@ -245,6 +245,30 @@ function tally(list, key) {
 const titleCase = s => String(s).toLowerCase().replace(/\b\w/g, c => c.toUpperCase()).replace(/, (\w\w)\.?$/, (m, st) => ", " + st.toUpperCase());
 const ago = ms => { const m = Math.round((Date.now() - ms) / 60e3); return m < 2 ? "just now" : m < 60 ? m + " min ago" : m < 1440 ? Math.round(m / 60) + " h ago" : Math.round(m / 1440) + " days ago"; };
 
+/* ---------------------------------------------------------------- scene: the water band shows the sky at the spot */
+// [top, middle, bottom] of the band for each sky and weather. Every stop keeps white text above 4.5:1 contrast.
+const DAY = {
+  clear: ["#1d6f86", "#17677a", "#0f5c56"], partly: ["#2d6878", "#1f5f6a", "#0f5652"], cloudy: ["#4b5d64", "#355a5c", "#1f4f4b"],
+  rain: ["#3b4b54", "#2c4b4f", "#1b4542"], fog: ["#526365", "#43595b", "#2f5452"], snow: ["#566c77", "#43636a", "#2a5458"], storm: ["#29333d", "#233a3e", "#163a37"],
+};
+const SKIES = {
+  dawn: { clear: ["#5e3a63", "#9c5140", "#0f5c56"], partly: ["#5d4466", "#8e5547", "#0f5652"] },
+  dusk: { clear: ["#33285a", "#8e4436", "#0c4a47"], partly: ["#3a3159", "#7d4a3e", "#0c4744"] },
+  night: { clear: ["#08142b", "#0a2236", "#0a3532"], partly: ["#0e1a2d", "#0f2633", "#0b3431"] },
+};
+const DIM = { dawn: 0.18, dusk: 0.3, night: 0.58 };
+const mix = (hex, amt) => "#" + [1, 3, 5].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - amt)).toString(16).padStart(2, "0")).join("");
+function applyScene() {
+  const spot = curSpot(), { sky, wx } = sceneOf(spot, cachedCond(spot.id));
+  const stops = (SKIES[sky] && SKIES[sky][wx]) || DAY[wx].map(c => sky === "day" ? c : mix(c, DIM[sky]));
+  const root = document.documentElement;
+  if (root.dataset.sky === sky && root.dataset.wx === wx) return;
+  root.dataset.sky = sky; root.dataset.wx = wx;
+  root.style.setProperty("--sky-top", stops[0]); root.style.setProperty("--sky-mid", stops[1]); root.style.setProperty("--band", stops[2]);
+  $$('meta[name="theme-color"]').forEach(m => m.setAttribute("content", stops[0]));
+}
+setInterval(applyScene, 5 * 60e3);
+
 /* ---------------------------------------------------------------- render */
 const view = $("#view");
 function render() {
@@ -257,6 +281,7 @@ function render() {
   // Redrawing resets sideways-scrolling rows (species chips, best times); keep them where they were.
   const rows = $$(".chipbar, .hscroll").map(el => [el.className, el.scrollLeft]);
   if (S.tab === "spots") renderSpots(); else if (S.tab === "log") renderLog(); else renderToday();
+  applyScene();
   for (const [cls, left] of rows) { const el = view.querySelector("." + cls.split(" ")[0]); if (el) el.scrollLeft = left; }
   revealSelectedChip();
 }
@@ -280,7 +305,10 @@ function bobberSvg(score) {
       <path d="M${cx - r} ${cy}a${r} ${r} 0 0 1 ${2 * r} 0z" fill="var(--accent)"/>
       <path d="M${cx - r} ${cy}h${2 * r}" stroke="var(--band-deep)" stroke-opacity=".25" stroke-width="2"/>
     </g>
-    <rect x="0" y="${water}" width="124" height="${124 - water}" fill="var(--band)" fill-opacity=".86"/>
+    <defs><linearGradient id="bobberWater" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" style="stop-color:var(--band-deep);stop-opacity:0"/><stop offset=".22" style="stop-color:var(--band-deep);stop-opacity:.7"/>
+      <stop offset=".78" style="stop-color:var(--band-deep);stop-opacity:.7"/><stop offset="1" style="stop-color:var(--band-deep);stop-opacity:0"/></linearGradient></defs>
+    <rect x="0" y="${water}" width="124" height="${124 - water}" fill="url(#bobberWater)"/>
     <path d="M0 ${water}q15.5 -5 31 0t31 0t31 0t31 0" fill="none" stroke="var(--band-ink)" stroke-opacity=".55" stroke-width="2"/>
   </svg>`;
 }
@@ -337,7 +365,7 @@ function renderToday() {
   band += `<div class="hero" aria-label="Bite outlook">
       ${bobberSvg(now.score)}
       <div class="scorebox"><span class="label">${esc(ctx.phase.name)} · ${water.v}°F water</span>
-        <span class="big">${now.score}</span><span class="pill" style="color:${scoreColor(now.score)}">${scoreLabel(now.score)} bite</span></div>
+        <span class="big">${now.score}</span><span class="pill"><i style="background:${scoreColor(now.score)}"></i>${scoreLabel(now.score)} bite</span></div>
     </div>
     <p class="headline">${esc(headline(ctx))}</p>
     <div class="factors">${ups.map(f => `<span class="factor up">+${f.v} ${esc(f.label)}</span>`).join("")}${downs.map(f => `<span class="factor down">${f.v} ${esc(f.label)}</span>`).join("")}</div>

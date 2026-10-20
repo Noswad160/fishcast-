@@ -139,3 +139,22 @@ test("report card: fish per hour by score band and a verdict", () => {
   const past = trip("p", 5, [30, 30, 30], { fish: 3 });
   assert.strictEqual(E.reportCard([...trips, past], catches).lo.fish, 4);
 });
+
+test("scene follows the sun at the spot and the current weather", () => {
+  // Guntersville, 2026-10-20: sunrise ~12:01 UTC, sunset ~23:11 UTC.
+  const at = (h, m = 0) => Date.UTC(2026, 9, 20, h, m);
+  const cond = (fields) => ({ hours: [{ t: at(17), cloud: 10, precip: 0, code: 0, ...fields }] });
+  assert.strictEqual(E.sceneOf(lake, null, at(17, 30)).sky, "day");
+  assert.strictEqual(E.sceneOf(lake, null, at(5)).sky, "night");
+  assert.strictEqual(E.sceneOf(lake, null, at(12, 5)).sky, "dawn");
+  assert.strictEqual(E.sceneOf(lake, null, at(23, 15)).sky, "dusk");
+  const wx = f => E.sceneOf(lake, cond(f), at(17, 30)).wx;
+  assert.strictEqual(wx({}), "clear");
+  assert.strictEqual(wx({ cloud: 50 }), "partly");
+  assert.strictEqual(wx({ cloud: 90, code: 3 }), "cloudy");
+  assert.strictEqual(wx({ code: 45 }), "fog");
+  assert.strictEqual(wx({ code: 61, precip: 0.05 }), "rain");
+  assert.strictEqual(wx({ code: 0, precip: 0.1 }), "rain");      // rain without a code (manual conditions)
+  assert.strictEqual(wx({ code: 73 }), "snow");
+  assert.strictEqual(wx({ code: 95 }), "storm");
+});

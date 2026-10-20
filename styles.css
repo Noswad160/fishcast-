@@ -344,7 +344,8 @@ main { padding-block: 0 104px; }
 .scorebox { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .scorebox .big { font-family: var(--f-display); font-weight: 700; font-size: 3.6rem; line-height: .9; font-variant-numeric: tabular-nums; }
 .scorebox .pill { align-self: flex-start; font-family: var(--f-display); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; font-size: .85rem;
-  padding: 2px 10px; border-radius: 999px; background: var(--foam); }
+  padding: 2px 10px; border-radius: 999px; background: var(--foam); color: #10221f; display: inline-flex; align-items: center; gap: 6px; }
+.scorebox .pill i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 1px rgba(0, 0, 0, .15); }
 .waterband .headline { font-size: 1.15rem; line-height: 1.35; font-weight: 600; color: var(--band-ink); }
 .waterband .factor { border-color: transparent; background: var(--band-soft); color: var(--band-ink); }
 .waterband .factor.up::first-letter, .waterband .factor.down::first-letter { font-weight: 700; }
@@ -377,3 +378,53 @@ main { padding-block: 0 104px; }
 .btn.accent { box-shadow: 0 4px 12px rgba(228, 86, 10, .25); }
 .panel { border-radius: 24px 24px 0 0; }
 .panel h3 { font-size: 1.5rem; text-transform: uppercase; }
+
+/* ================================================================ scene: sky gradient and weather over the water band */
+:root { --sky-top: var(--band); --sky-mid: var(--band); }
+.top { background: var(--sky-top); transition: background-color .6s ease; }
+.waterband { background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 45%, var(--band) 100%); overflow: visible; }
+.waterband > :not(.wave) { position: relative; z-index: 1; }
+.waterband::before, .waterband::after { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+/* Stars on a clear or partly cloudy night */
+:root[data-sky="night"]:is([data-wx="clear"], [data-wx="partly"]) .waterband::before {
+  background-image:
+    radial-gradient(1.5px 1.5px at 8% 14%, #fff 60%, transparent 61%), radial-gradient(1px 1px at 22% 32%, #fff 60%, transparent 61%),
+    radial-gradient(1.5px 1.5px at 37% 9%, #fff 60%, transparent 61%), radial-gradient(1px 1px at 51% 26%, #fff 60%, transparent 61%),
+    radial-gradient(1px 1px at 63% 6%, #fff 60%, transparent 61%), radial-gradient(1.5px 1.5px at 74% 21%, #fff 60%, transparent 61%),
+    radial-gradient(1px 1px at 86% 11%, #fff 60%, transparent 61%), radial-gradient(1px 1px at 93% 34%, #fff 60%, transparent 61%),
+    radial-gradient(1px 1px at 15% 46%, #fff 60%, transparent 61%), radial-gradient(1px 1px at 44% 41%, #fff 60%, transparent 61%),
+    radial-gradient(1.5px 1.5px at 81% 44%, #fff 60%, transparent 61%), radial-gradient(1px 1px at 30% 58%, #fff 60%, transparent 61%);
+  opacity: .8;
+}
+:root[data-sky="night"][data-wx="partly"] .waterband::before { opacity: .4; }
+/* Dawn and dusk: a warm glow on the horizon behind the score */
+:root:is([data-sky="dawn"], [data-sky="dusk"]) .waterband::after { background: radial-gradient(120% 60% at 30% 55%, rgba(255, 170, 110, .28), transparent 70%); }
+/* Rain and storms: falling streaks */
+:root:is([data-wx="rain"], [data-wx="storm"]) .waterband::before {
+  background-image: repeating-linear-gradient(104deg, transparent 0 18px, rgba(255, 255, 255, .22) 18px 19px, transparent 19px 37px);
+  background-size: 37px 120px; opacity: .7;
+}
+:root[data-wx="storm"] .waterband::before { opacity: 1; background-image: repeating-linear-gradient(104deg, transparent 0 9px, rgba(255, 255, 255, .26) 9px 10px, transparent 10px 19px); background-size: 19px 90px; }
+/* Fog: soft banks of mist */
+:root[data-wx="fog"] .waterband::before {
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, .1) 25%, transparent 50%, rgba(255, 255, 255, .08) 75%, transparent 100%) 0 0 / 200% 100%,
+              linear-gradient(180deg, rgba(255, 255, 255, .03), rgba(255, 255, 255, .06) 70%, rgba(255, 255, 255, .04));
+}
+/* Snow: drifting flakes */
+:root[data-wx="snow"] .waterband::before {
+  background-image: radial-gradient(2px 2px at 10% 20%, #fff 60%, transparent 61%), radial-gradient(1.5px 1.5px at 35% 60%, #fff 60%, transparent 61%),
+    radial-gradient(2px 2px at 60% 35%, #fff 60%, transparent 61%), radial-gradient(1.5px 1.5px at 85% 75%, #fff 60%, transparent 61%),
+    radial-gradient(2px 2px at 75% 5%, #fff 60%, transparent 61%), radial-gradient(1.5px 1.5px at 22% 85%, #fff 60%, transparent 61%);
+  background-size: 160px 160px; opacity: .8;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root:is([data-wx="rain"], [data-wx="storm"]) .waterband::before { animation: rain .55s linear infinite; }
+  :root[data-wx="storm"] .waterband::before { animation-duration: .35s; }
+  :root[data-wx="snow"] .waterband::before { animation: snow 9s linear infinite; }
+  :root[data-wx="fog"] .waterband::before { animation: fog 26s linear infinite alternate; }
+  :root[data-sky="night"]:is([data-wx="clear"], [data-wx="partly"]) .waterband::before { animation: twinkle 5s ease-in-out infinite alternate; }
+}
+@keyframes rain { to { background-position: -26px 120px; } }
+@keyframes snow { to { background-position: 30px 160px; } }
+@keyframes fog { to { background-position: 100% 0, 0 0; } }
+@keyframes twinkle { to { opacity: .45; } }
