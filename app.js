@@ -517,11 +517,14 @@ async function importBackup(file) {
 }
 
 /* ---------------------------------------------------------------- events */
-function parseCoords(str) {
-  const m = String(str).match(/(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)/);
-  if (!m) return null;
-  const lat = Number(m[1]), lon = Number(m[2]);
-  return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null;
+// What the location box understood, shown under it as you type or paste (parseCoords is in engine.js).
+function coordFeedback(text) {
+  const note = $("#coordNote"), c = parseCoords(text);
+  if (!text.trim()) note.textContent = "";
+  else if (c) note.textContent = `Got it: ${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}`;
+  else if (/goo\.gl|maps\.app|apple\.co/i.test(text)) note.textContent = "Short share links don't include the location. In the map app, copy the coordinates instead, or use Pick on map.";
+  else note.textContent = "Can't read that yet. Paste it like 35.2501, -91.7365 or 35.2501° N, 91.7365° W.";
+  return c;
 }
 function go(tab) { S.tab = tab; remember(); window.scrollTo(0, 0); render(); }
 function selectSpot(id) { S.spotId = id; S.speciesId = null; remember(); }
@@ -578,6 +581,8 @@ document.addEventListener("click", async e => {
       break;
     case "search": {
       const q = $("#fSearch").value.trim(), out = $("#searchOut"); if (!q) break;
+      const typed = parseCoords(q);
+      if (typed) { $("#fCoords").value = typed.lat + ", " + typed.lon; $("#fSearch").value = ""; coordFeedback($("#fCoords").value); break; }
       out.textContent = "Searching…";
       try {
         const j = await getJSON("https://geocoding-api.open-meteo.com/v1/search?count=6&name=" + encodeURIComponent(q));
@@ -622,16 +627,19 @@ document.addEventListener("click", async e => {
 document.addEventListener("change", e => {
   const t = e.target;
   if (t.name === "fWater") fillEnvBoxes(checked("fSpecies"), checked("fStruct"));
+  else if (t.id === "fCoords") coordFeedback(t.value);
   else if (t.name === "lLure") { const o = $("#lLureOther"); o.hidden = t.value !== "__other"; if (!o.hidden) o.focus(); }
   else if (t.id === "importFile" && t.files[0]) { importBackup(t.files[0]); t.value = ""; }
 });
+
+document.addEventListener("input", e => { if (e.target.id === "fCoords") coordFeedback(e.target.value); });
 
 document.addEventListener("submit", e => {
   e.preventDefault();
   const f = e.target, spot = curSpot();
   if (f.id === "spotForm") {
-    const c = parseCoords($("#fCoords").value), name = $("#fName").value.trim(), err = $("#formErr");
-    const problem = !c ? "Set the location: use your location, search, or paste coordinates." : !name ? "Give the spot a name." : "";
+    const raw = $("#fCoords").value, c = parseCoords(raw) || parseCoords($("#fSearch").value), name = $("#fName").value.trim(), err = $("#formErr");
+    const problem = !c ? (raw.trim() ? "Those coordinates couldn't be read. Paste them like 35.2501, -91.7365, or use Pick on map." : "Set the location: tap I'm here now, Pick on map, search, or paste coordinates.") : !name ? "Give the spot a name." : "";
     if (problem) { err.textContent = problem; err.hidden = false; err.scrollIntoView({ block: "nearest" }); return; }
     const sid = f.dataset.id || uid("spot"), prev = Store.items[sid] || {};
     const moved = prev.lat !== c.lat || prev.lon !== c.lon;

@@ -261,6 +261,38 @@ async function loadLive(spot) {
   }
   return cond;
 }
+/* Coordinates as people paste them: "35.2501, -91.7365" (Google Maps), "35.25010° N, 91.73650° W" (Apple Maps),
+   35°15'00.4"N 91°44'11.4"W, Unicode minus signs, or a map link containing @lat,lon / ll= / q=.
+   Returns { lat, lon } or null. */
+function parseCoords(input) {
+  let s = String(input || "").trim();
+  if (!s) return null;
+  s = s.replace(/[\u2212\u2012\u2013\u2014\uFE63\uFF0D]/g, "-").replace(/[\u2032\u2019\u00B4]/g, "'").replace(/[\u2033\u201D]|''/g, '"')
+       .replace(/\u00BA/g, "°").replace(/\u00A0/g, " ").toUpperCase();
+  // Map links: prefer the explicit location in the URL.
+  const link = s.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) || s.match(/[?&](?:LL|Q|QUERY|SLL|CENTER|DESTINATION)=(-?\d+(?:\.\d+)?)(?:,|%2C)\s*(-?\d+(?:\.\d+)?)/);
+  if (link) return checkCoords(Number(link[1]), Number(link[2]));
+  if (/^HTTPS?:\/\//.test(s)) return null; // a short link (maps.app.goo.gl/...) has no coordinates in it
+  const part = /([NSEW])?\s*(-?\d+(?:\.\d+)?)(?:\s*°\s*(?:(\d+(?:\.\d+)?)\s*'\s*)?(?:(\d+(?:\.\d+)?)\s*"\s*)?)?\s*([NSEW](?![A-Z]))?/g;
+  const found = [];
+  for (const m of s.matchAll(part)) {
+    if (m[2] === undefined) continue;
+    const hemi = m[1] || m[5] || "";
+    let v = Math.abs(Number(m[2])) + (m[3] ? Number(m[3]) / 60 : 0) + (m[4] ? Number(m[4]) / 3600 : 0);
+    if (m[2].startsWith("-") || hemi === "S" || hemi === "W") v = -v;
+    found.push({ v, hemi });
+    if (found.length === 2) break;
+  }
+  if (found.length < 2) return null;
+  let [a, b] = found;
+  if ("EW".includes(a.hemi) && a.hemi && "NS".includes(b.hemi) && b.hemi) [a, b] = [b, a]; // longitude written first
+  return checkCoords(a.v, b.v);
+}
+function checkCoords(lat, lon) {
+  if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  return { lat: Math.round(lat * 1e5) / 1e5, lon: Math.round(lon * 1e5) / 1e5 };
+}
+
 /* USGS stream and lake gauges (legacy NWIS instantaneous-values service), parameter 00010 = water temperature. */
 const GAUGE_MAX_MI = 20, GAUGE_MAX_AGE = 24 * hourMs;
 function milesBetween(a, b) {
@@ -536,4 +568,4 @@ function headline(ctx) {
   return `${lead} for ${ctx.sp.name.toLowerCase()}.${when} Start with a ${bait.charAt(0).toLowerCase() + bait.slice(1)}.`;
 }
 
-if (typeof module !== "undefined") module.exports = { dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };
+if (typeof module !== "undefined") module.exports = { parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };

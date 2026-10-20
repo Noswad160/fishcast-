@@ -77,3 +77,28 @@ test("time ranges and day words read naturally", () => {
   assert.strictEqual(E.dayWord(mid + 29 * h, tz), "tomorrow");
   assert.match(E.dayWord(mid + 53 * h, tz), /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)$/);
 });
+
+test("reads coordinates in the formats people paste", () => {
+  const want = { lat: 35.2501, lon: -91.7365 };
+  for (const s of [
+    "35.2501, -91.7365",                       // Google Maps
+    "35.2501,-91.7365",
+    "35.2501 -91.7365",
+    "  35.2501 , -91.7365  ",
+    "35.2501° N, 91.7365° W",                  // Apple Maps
+    "35.2501°N 91.7365°W",
+    "N 35.2501, W 91.7365",
+    "91.7365° W, 35.2501° N",                  // longitude first, with letters
+    "35.2501, −91.7365",                  // Unicode minus
+    "35.2501, -91.7365",                  // non-breaking space
+    "https://www.google.com/maps/place/Lake/@35.2501,-91.7365,15z/data=!3m1",
+    "https://maps.apple.com/?ll=35.2501,-91.7365&q=Dropped%20Pin",
+    "https://maps.google.com/?q=35.2501,-91.7365",
+  ]) assert.deepStrictEqual(E.parseCoords(s), want, s);
+  // Degrees, minutes, seconds (35°15'00.4"N = 35.25011)
+  const dms = E.parseCoords(`35°15'00.4"N 91°44'11.4"W`);
+  assert.ok(Math.abs(dms.lat - 35.25011) < 1e-4 && Math.abs(dms.lon + 91.73650) < 1e-4, JSON.stringify(dms));
+  const dms2 = E.parseCoords("35°15′00.4″N 91°44′11.4″W");
+  assert.ok(Math.abs(dms2.lat - 35.25011) < 1e-4 && Math.abs(dms2.lon + 91.73650) < 1e-4, JSON.stringify(dms2));
+  for (const bad of ["", "Searcy", "35.25", "https://maps.app.goo.gl/AbC123xyz", "95, 20", "35, 200"]) assert.strictEqual(E.parseCoords(bad), null, bad);
+});
