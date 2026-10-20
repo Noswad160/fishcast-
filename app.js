@@ -96,6 +96,54 @@ async function warmSpots() {
   } finally { S.warming = false; }
 }
 
+/* ---------------------------------------------------------------- trips */
+const trips = () => Store.list("trip");
+const activeTrip = () => trips().find(t => !t.end) || null;
+const tripCatches = t => Store.list("catch").filter(c => c.tripId === t.id);
+const fishIn = list => list.reduce((a, c) => a + (c.count || 1), 0);
+const fmtDur = ms => { const m = Math.max(0, Math.round(ms / 60e3)); return m < 60 ? m + " min" : Math.floor(m / 60) + " h" + (m % 60 ? " " + (m % 60) + " min" : ""); };
+function tripBar(spot) {
+  const t = activeTrip();
+  if (t && t.spotId === spot.id) {
+    const long = Date.now() - t.start > 10 * 36e5;
+    return `<section class="tripbar on" aria-label="Trip in progress"><div><span class="label">Trip in progress</span>
+      <b><span data-elapsed>${fmtDur(Date.now() - t.start)}</span> · ${fishIn(tripCatches(t))} fish</b>${long ? `<span class="small">Still fishing? Tap End trip to set how long you fished.</span>` : ""}</div>
+      <button class="btn sm accent" data-act="endTrip">End trip</button></section>`;
+  }
+  if (t) {
+    const other = spots().find(s => s.id === t.spotId);
+    return `<section class="tripbar on" aria-label="Trip in progress"><div><span class="label">Trip in progress</span><b>${esc(other ? other.name : "Another spot")} · <span data-elapsed>${fmtDur(Date.now() - t.start)}</span></b></div>
+      <div class="row"><button class="btn sm ghost" data-act="openSpot" data-id="${esc(t.spotId)}">Go there</button><button class="btn sm accent" data-act="endTrip">End trip</button></div></section>`;
+  }
+  if (spot.example) return "";
+  return `<section class="tripbar" aria-label="Start a trip"><div><b>Heading out?</b><span class="small muted">Start a trip so Fishcast can check its forecast against what you catch.</span></div>
+    <button class="btn sm accent" data-act="startTrip">Start trip</button></section>`;
+}
+setInterval(() => { const t = activeTrip(); if (t) $$("[data-elapsed]").forEach(el => { el.textContent = fmtDur(Date.now() - t.start); }); }, 30e3);
+
+const BAND_SCORE = { Hot: 80, Good: 65, Fair: 50, Slow: 30 };
+function reportCardHtml(rc) {
+  const x = n => (Math.round(n * 10) / 10).toString();
+  const need = rc.need, parts = [need.trips && `${need.trips} more trip${need.trips > 1 ? "s" : ""}`, need.hours > 0 && `about ${Math.ceil(need.hours)} more hours`, need.fish && `${need.fish} more fish`].filter(Boolean);
+  const early = rc.solid || rc.verdict === "learning" || rc.verdict === "one-sided" ? "" : "Early read: ";
+  const msg = early + {
+    learning: `Fishcast needs ${parts.join(", ")} here before it can tell whether its forecast holds up.`,
+    "one-sided": `So far you've mostly fished ${rc.hi.hours < 2 ? "Fair and Slow" : "Good and Hot"} hours. Fish some ${rc.hi.hours < 2 ? "Good or Hot" : "Fair or Slow"} hours too, so there's something to compare.`,
+    working: rc.lo.fish === 0 ? `The forecast is working here. All your fish came when it said Good or Hot.` : `The forecast is working here. You catch ${x(rc.ratio)}× more fish per hour when it says Good or Hot.`,
+    unclear: `No clear difference yet. You catch about the same per hour whatever the score says. Keep logging trips; Fishcast will use them to tune the score for this spot.`,
+    backwards: `The score has been backwards here: you catch more when it says Fair or Slow. Fishcast will use this to tune the score for this spot.`,
+  }[rc.verdict];
+  const max = Math.max(...BANDS.map(k => rc.bands[k].rate), 0.01);
+  const rows = BANDS.filter(k => rc.bands[k].hours > 0).map(k => { const b = rc.bands[k]; return `<div class="rcrow">
+      <span class="rcband"><i style="background:${scoreColor(BAND_SCORE[k])}"></i>${k}</span>
+      <span class="track"><span class="fill" style="width:${Math.round(b.rate / max * 100)}%;background:${scoreColor(BAND_SCORE[k])}"></span></span>
+      <span class="mono small">${x(b.rate)}/h</span><span class="small muted">${b.fish} fish · ${x(b.hours)} h</span></div>`; }).join("");
+  return `<section class="card" aria-label="Forecast report card"><h3>Forecast report card</h3>
+    <p class="verdict ${rc.verdict}">${esc(msg)}</p>
+    ${rows ? `<div class="rc"><div class="rcrow head small muted"><span>Score said</span><span>Fish per hour</span><span></span><span></span></div>${rows}</div>` : ""}
+    <p class="small muted">${rc.trips} trip${rc.trips === 1 ? "" : "s"} · ${x(rc.all.hours)} h · ${rc.all.fish} fish. Only trips you start in the app, or log as past trips, count.</p></section>`;
+}
+
 /* ---------------------------------------------------------------- small UI pieces */
 let toastTimer;
 function toast(msg, action) {
@@ -249,6 +297,7 @@ function renderToday() {
   let html = "";
   if (!ownSpots().length) html += `<section class="banner welcome"><div><span class="label">Welcome to Fishcast</span><b>Set up your own spot in about 30 seconds.</b><span class="small">Until then you're looking at an example lake and example catches.</span><div class="row"><button class="btn" data-act="newSpot">Add my spot</button></div></div></section>`;
   if (list.length > 1) html += `<div class="chipbar" role="group" aria-label="Target species">${list.map(k => `<button class="chip" data-act="species" data-id="${k}" aria-pressed="${k === spId}">${esc(SPECIES[k].name)}</button>`).join("")}</div>`;
+  html += tripBar(spot);
   if (!cond) { view.innerHTML = html + `<div class="skeleton" aria-label="Loading conditions"></div><div class="skeleton" style="height:90px"></div>`; return; }
 
   const ctx = buildCtx(spot, cond, spId), { h, sp, tz, astro, water } = ctx, now = ctx.now, err = S.errors[spot.id];
@@ -275,7 +324,7 @@ function renderToday() {
   const est = water.src === "estimate", salt = ctx.env === "salt", tide = tideOf(spot);
   const trendArrow = h.trend3 <= -0.03 ? "↓" : h.trend3 >= 0.03 ? "↑" : "→";
   html += `<section class="tiles" aria-label="Conditions">
-    <button class="tile${est ? " flag" : ""}" data-act="reading"><span class="label">Water</span><span class="v">${water.v}°F</span><span class="s">${est ? "est. · tap to set" : esc(water.src)}</span></button>
+    <button class="tile${est ? " flag" : ""}" data-act="reading"><span class="label">Water</span><span class="v">${water.v}°F</span><span class="s">${est ? "tap to set" : esc(water.src)}</span></button>
     <div class="tile"><span class="label">Air</span><span class="v">${Math.round(h.air)}°F</span><span class="s">${LABELS.sky[skyCat(h)].toLowerCase()}</span></div>
     <div class="tile"><span class="label">Wind</span><span class="v">${Math.round(h.wind)} ${compass(h.dir)}</span><span class="s">mph · gusts ${Math.round(h.gust)}</span></div>
     <div class="tile"><span class="label">Pressure</span><span class="v">${cond.mode === "manual" ? "" : h.pres.toFixed(2) + " "}${trendArrow}</span><span class="s">${trendCat(h)}</span></div>
@@ -323,7 +372,10 @@ function historyCard(ctx) {
     body = `<p class="small">${similar.length} of your catches here came in conditions like these. They hit:</p>${bars(tally(similar.map(x => x.e), "lure"))}
       <p class="small muted">Closest match: ${fmtDate(top.t, ctx.tz)}, ${top.snap.water}°F, ${esc(top.snap.trend)} pressure, ${esc(top.snap.sky)}${top.lure ? ", " + esc(top.lure) : ""}${top.depth ? ", " + esc(top.depth) + " ft" : ""}.</p>`;
   }
-  return `<section class="card" aria-label="Your history here"><h3>What's worked here ${spot.example ? '<span class="example">Example</span>' : ""}</h3>${body}</section>`;
+  const rc = reportCard(trips().filter(t => t.spotId === spot.id), Store.list("catch").filter(c => c.spotId === spot.id));
+  const rcLine = (rc.solid || !["working", "backwards"].includes(rc.verdict) ? "" : "Early read: ") + (rc.verdict === "working" ? (rc.lo.fish === 0 ? "At this spot, all your trip catches came when the score said Good or Hot." : `At this spot you catch ${Math.round(rc.ratio * 10) / 10}× more fish per hour when the score says Good or Hot.`)
+    : rc.verdict === "backwards" ? "At this spot the score has been backwards so far. See the report card on the Catches tab." : "");
+  return `<section class="card" aria-label="Your history here"><h3>What's worked here ${spot.example ? '<span class="example">Example</span>' : ""}</h3>${["working", "backwards"].includes(rc.verdict) ? `<p class="verdict ${rc.verdict}">${esc(rcLine)}</p>` : ""}${body}</section>`;
 }
 
 function spotScore(spot) {
@@ -368,8 +420,11 @@ function renderLog() {
   const spot = curSpot(), tz = cachedCond(spot.id)?.tz ?? deviceTz();
   const here = entries().filter(e => e.spotId === spot.id).sort((a, b) => b.t - a.t);
   const catches = here.filter(e => e.count > 0), blanks = here.filter(e => !e.count);
+  const myTrips = trips().filter(t => t.spotId === spot.id);
   let html = `<div class="row" style="justify-content:space-between"><h2>Catches at ${esc(spot.name)}</h2>${spot.example ? '<span class="example">Example</span>' : ""}</div>`;
-  if (!here.length) html += `<section class="card"><p>Nothing logged at ${esc(spot.name)} yet.</p><p class="small muted">Tap <b>＋ Catch</b> when you land a fish. It saves the time and conditions automatically, so in a few trips you'll see what actually works here.</p></section>`;
+  html += tripBar(spot);
+  if (!spot.example) html += reportCardHtml(reportCard(myTrips, Store.list("catch").filter(c => c.spotId === spot.id)));
+  if (!here.length && !myTrips.length) html += `<section class="card"><p>Nothing logged at ${esc(spot.name)} yet.</p><p class="small muted">Tap <b>Start trip</b> when you get to the water and <b>＋ Catch</b> when you land a fish. Times and conditions are saved automatically.</p></section>`;
   if (catches.length) {
     const total = catches.reduce((a, e) => a + (e.count || 1), 0), hrs = blanks.reduce((a, e) => a + (e.hours || 0), 0);
     const band = e => e.snap?.water == null ? "" : (Math.floor(e.snap.water / 5) * 5) + "–" + (Math.floor(e.snap.water / 5) * 5 + 4) + "°F";
@@ -388,7 +443,12 @@ function renderLog() {
       <details><summary>All patterns</summary><div class="grid2" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-top:8px">${groups.map(sec).join("")}</div></details>
     </section>`;
   }
-  if (here.length) html += `<section class="list" aria-label="History">${here.map(e => `<div class="item">
+  const history = here.concat(myTrips.filter(t => t.end).map(t => ({ ...t, isTrip: true, t: t.start }))).sort((a, b) => b.t - a.t);
+  const tripItem = e => { const w = (e.hours || []).reduce((a, h) => a + h.frac, 0), avg = w ? Math.round(e.hours.reduce((a, h) => a + h.score * h.frac, 0) / w) : null, n = e.fish ?? fishIn(tripCatches(e));
+    return `<div class="item trip"><div class="head"><span style="display:flex;flex-direction:column;min-width:0"><b>Trip · ${fmtDur(e.end - e.start)} · ${n} fish</b><span class="small muted">${fmtDate(e.start, tz)} · ${fmtTime(e.start, tz)}–${fmtTime(e.end, tz)}</span></span>
+      <button class="iconbtn del" data-act="delTrip" data-id="${esc(e.id)}" aria-label="Delete this trip">${ICON_TRASH}</button></div>
+      <span class="small">${avg == null ? "Too long ago to grade against the forecast." : `Forecast averaged <b style="color:${scoreColor(avg)}">${scoreLabel(avg)} (${avg})</b>`}${e.tried ? " · " + esc(e.tried) : ""}</span></div>`; };
+  if (history.length) html += `<section class="list" aria-label="History">${history.map(e => e.isTrip ? tripItem(e) : `<div class="item">
     <div class="head"><span style="display:flex;flex-direction:column;min-width:0"><b>${e.count > 0 ? `${e.count > 1 ? e.count + " × " : ""}${esc(SPECIES[e.species]?.name || e.species)}${e.length ? ` · ${esc(e.length)} in` : ""}` : `No bites · ${esc(e.hours)} h`}</b><span class="small muted">${fmtDate(e.t, tz)} · ${fmtTime(e.t, tz)}</span></span>
       ${e.example ? "" : `<button class="iconbtn del" data-act="delEntry" data-id="${esc(e.id)}" aria-label="Delete this entry">${ICON_TRASH}</button>`}</div>
     ${e.lure || e.depth || e.notes ? `<span class="small">${[e.lure, e.depth ? e.depth + " ft" : "", e.notes].filter(Boolean).map(esc).join(" · ")}</span>` : ""}
@@ -409,12 +469,14 @@ function spotPickerSheet() {
 function logSheet(kind) {
   const spot = curSpot();
   if (kind === "blank") {
-    openSheet(`<form id="logForm" data-kind="blank" novalidate><div class="sheethead"><h3 id="sheetTitle">No bites this trip</h3><span class="small muted">${esc(spot.name)}</span></div>
-      <p class="small muted">Logging slow trips matters. It tells Fishcast which conditions didn't work here.</p>
-      <div class="field"><span class="label">Hours fished</span>${stepper("lHours", 2, 0.5, 0.5)}</div>
-      <label class="field"><span class="label">What you tried</span><input type="text" id="lLureOther" placeholder="Jerkbait, jig, docks and points"></label>
-      <button class="btn big" type="submit">Save trip</button>
-      <button type="button" class="linkbtn" data-act="logCatch">Caught one after all? Log a catch</button></form>`);
+    const local = ms => { const d = new Date(ms); return new Date(ms - d.getTimezoneOffset() * 60e3).toISOString().slice(0, 16); };
+    openSheet(`<form id="pastTripForm" novalidate><div class="sheethead"><h3 id="sheetTitle">Log a past trip</h3><span class="small muted">${esc(spot.name)}</span></div>
+      <p class="small muted">For a trip you didn't start in the app. Trips from the last 7 days are graded against the forecast. Slow trips count too.</p>
+      <label class="field"><span class="label">Started</span><input type="datetime-local" id="pStart" value="${local(Date.now() - 3 * 36e5)}" min="${local(Date.now() - 7 * 864e5)}" max="${local(Date.now())}"></label>
+      <div class="grid2"><div class="field"><span class="label">Hours fished</span>${stepper("pHours", 2, 0.5, 0.5)}</div><div class="field"><span class="label">Fish caught</span>${stepper("pFish", 0, 1, 0)}</div></div>
+      <label class="field"><span class="label">What you tried</span><input type="text" id="pTried" placeholder="Jerkbait, jig, docks and points"></label>
+      <p id="pErr" class="small" style="color:var(--bad)" role="alert" hidden></p>
+      <button class="btn big" type="submit">Save trip</button></form>`);
     return;
   }
   const spId = curSpecies(spot), list = Object.keys(SPECIES).filter(k => SPECIES[k].env === envOf(spot));
@@ -433,8 +495,20 @@ function logSheet(kind) {
     <details><summary>Depth and notes</summary><div class="grid2" style="margin-top:8px"><label class="field"><span class="label">Depth (ft)</span><input type="number" id="lDepth" inputmode="numeric"></label>
       <label class="field"><span class="label">Notes</span><input type="text" id="lNotes" placeholder="Windy side of the point"></label></div></details>
     <button class="btn big accent" type="submit">Save catch</button>
-    <button type="button" class="linkbtn" data-act="logBlank">Fished but caught nothing? Log a no-bite trip</button>
+    <button type="button" class="linkbtn" data-act="logBlank">Forgot to start a trip? Log a past trip</button>
   </form>`);
+}
+
+function endTripSheet() {
+  const t = activeTrip(); if (!t) return;
+  const spot = spots().find(s => s.id === t.spotId), el = Date.now() - t.start, long = el > 10 * 36e5;
+  const hrs = long ? 3 : Math.max(0.25, Math.round(el / 36e5 * 4) / 4);
+  openSheet(`<form id="endTripForm" novalidate><h3 id="sheetTitle">End trip</h3>
+    <p class="small muted">${esc(spot ? spot.name : "")} · started ${fmtTime(t.start, deviceTz())} · ${fishIn(tripCatches(t))} fish logged</p>
+    ${long ? `<p class="banner warn small">This trip has been running ${fmtDur(el)}. If you forgot to end it, set how long you actually fished.</p>` : ""}
+    <div class="field"><span class="label">Hours fished</span>${stepper("tHours", hrs, 0.25, 0.25)}</div>
+    <button class="btn big accent" type="submit">Save trip</button>
+    <button type="button" class="linkbtn" data-act="discardTrip" style="color:var(--bad)">Discard this trip (your catches stay)</button></form>`);
 }
 
 function spotSheet(spot) {
@@ -568,6 +642,26 @@ document.addEventListener("click", async e => {
     case "editSpot": spotSheet(Store.list("spot").find(s => s.id === id)); break;
     case "logCatch": logSheet("catch"); break;
     case "logBlank": logSheet("blank"); break;
+    case "startTrip": {
+      const spot = curSpot();
+      if (activeTrip()) { toast("A trip is already running."); break; }
+      const tid = uid("trip");
+      Store.put(tid, { kind: "trip", spotId: spot.id, species: curSpecies(spot), start: Date.now(), end: null });
+      buzz(); render(); toast("Trip started. Tap ＋ Catch when you land one.", { label: "Undo", fn: () => { Store.del(tid); render(); } });
+      break;
+    }
+    case "endTrip": endTripSheet(); break;
+    case "discardTrip": {
+      const t = activeTrip(); if (!t) break;
+      const old = Store.items[t.id]; Store.del(t.id); closeSheet(); render();
+      toast("Trip discarded", { label: "Undo", fn: () => { Store.items[t.id] = old; Store.save(); render(); } });
+      break;
+    }
+    case "delTrip": {
+      const old = Store.items[id]; Store.del(id); render();
+      toast("Trip deleted", { label: "Undo", fn: () => { Store.items[id] = old; Store.save(); render(); } });
+      break;
+    }
     case "reading": readingSheet(); break;
     case "howScore": openSheet(`<div class="body"><h3 id="sheetTitle">How the bite score works</h3>
       <p>Every hour gets a score from 0 to 100 for the species you picked. It starts at 50 and moves with the things that usually make fish feed:</p>
@@ -619,7 +713,7 @@ document.addEventListener("click", async e => {
     case "keepSpot": $("#delArea").innerHTML = `<button type="button" class="linkbtn" data-act="askDelSpot" style="color:var(--bad)">Delete this spot</button>`; break;
     case "delSpot": {
       const sid = $("#spotForm").dataset.id, before = JSON.stringify(Store.items);
-      Store.list("catch").filter(c => c.spotId === sid).forEach(c => delete Store.items[c.id]);
+      Store.list("catch").concat(Store.list("trip")).filter(c => c.spotId === sid).forEach(c => delete Store.items[c.id]);
       Store.del(sid); LS.del("fishcast.cond." + sid); delete S.conds[sid];
       if (S.spotId === sid) selectSpot(null);
       closeSheet(); render();
@@ -664,13 +758,35 @@ document.addEventListener("submit", e => {
     selectSpot(sid); closeSheet(); buzz(); go("today"); toast("Spot saved");
   } else if (f.id === "logForm") {
     if (spot.example) { closeSheet(); toast("Add your own spot first. Example entries aren't saved.", { label: "Add spot", fn: () => spotSheet(null) }); return; }
-    const cond = cachedCond(spot.id), snap = cond ? snapFromCtx(buildCtx(spot, cond, curSpecies(spot))) : null;
+    const cond = cachedCond(spot.id), cctx = cond ? buildCtx(spot, cond, curSpecies(spot)) : null;
+    const snap = cctx ? { ...snapFromCtx(cctx), score: cctx.now.score, species: cctx.spId } : null;
     const pick = $('input[name="lLure"]:checked')?.value, lure = (!pick || pick === "__other" ? $("#lLureOther").value : pick).trim();
-    const entry = { kind: "catch", spotId: spot.id, t: Date.now(), snap, lure };
+    const entry = { kind: "catch", spotId: spot.id, t: Date.now(), snap, lure }, trip = activeTrip();
+    if (trip && trip.spotId === spot.id) entry.tripId = trip.id;
     if (f.dataset.kind === "blank") Object.assign(entry, { count: 0, hours: Number($("#lHours").value) || 0, notes: "" });
     else Object.assign(entry, { species: $('input[name="lSpecies"]:checked')?.value || curSpecies(spot), length: $("#lLen").value, depth: $("#lDepth").value, notes: $("#lNotes").value.trim(), count: Math.max(1, Math.round(Number($("#lCount").value) || 1)) });
     const eid = uid("catch"); Store.put(eid, entry); closeSheet(); buzz(); render();
     toast(entry.count ? "Catch saved" : "Trip saved", { label: "Undo", fn: () => { Store.del(eid); render(); } });
+  } else if (f.id === "endTripForm") {
+    const t = activeTrip(); if (!t) { closeSheet(); return; }
+    const tspot = spots().find(s => s.id === t.spotId) || spot, hrs = Math.max(0.25, Number($("#tHours").value) || 0.25);
+    const end = Math.min(Date.now(), t.start + hrs * 36e5);
+    closeSheet();
+    (async () => {
+      const cond = cachedCond(tspot.id) || await ensureCond(tspot);
+      Store.put(t.id, { ...t, end, hours: cond ? scoreTrip(tspot, cond, t.species, t.start, end) : [] });
+      buzz(); render(); toast(`Trip saved: ${fmtDur(end - t.start)}, ${fishIn(tripCatches(t))} fish`);
+    })();
+  } else if (f.id === "pastTripForm") {
+    if (spot.example) { closeSheet(); toast("Add your own spot first. Example entries aren't saved.", { label: "Add spot", fn: () => spotSheet(null) }); return; }
+    const start = new Date($("#pStart").value).getTime(), hrs = Math.max(0.5, Number($("#pHours").value) || 0.5), err = $("#pErr");
+    if (!isFinite(start) || start > Date.now()) { err.textContent = "Set when the trip started. It can't be in the future."; err.hidden = false; return; }
+    const end = Math.min(Date.now(), start + hrs * 36e5), fish = Math.max(0, Math.round(Number($("#pFish").value) || 0));
+    const cond = cachedCond(spot.id), sp = curSpecies(spot), hours = cond ? scoreTrip(spot, cond, sp, start, end) : [];
+    const tid = uid("trip");
+    Store.put(tid, { kind: "trip", spotId: spot.id, species: sp, start, end, hours, fish, past: true, tried: $("#pTried").value.trim() });
+    closeSheet(); buzz(); render();
+    toast(hours.length ? `Trip saved: ${fmtDur(end - start)}, ${fish} fish` : "Trip saved. It's too long ago to grade against the forecast.", { label: "Undo", fn: () => { Store.del(tid); render(); } });
   } else if (f.id === "readingForm") {
     const r = { ...(spot.reading || {}), at: Date.now(), clarity: $('input[name="rdClarity"]:checked')?.value || spot.clarity }, inp = $("#rdWater");
     // Only a changed number counts as a thermometer reading; otherwise keep the gauge or estimate.

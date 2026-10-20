@@ -568,4 +568,53 @@ function headline(ctx) {
   return `${lead} for ${ctx.sp.name.toLowerCase()}.${when} Start with a ${bait.charAt(0).toLowerCase() + bait.slice(1)}.`;
 }
 
-if (typeof module !== "undefined") module.exports = { parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };
+/* ---------------------------------------------------------------- trips and the forecast report card */
+// The bite score for each hour (or part of an hour) of a trip. Past hours use the observed weather in cond.hours.
+function scoreTrip(spot, cond, spId, start, end) {
+  const ctx = buildCtx(spot, cond, spId);
+  ctx.astro = astroEvents(start - 3 * hourMs, end + 3 * hourMs, spot.lat, spot.lon);
+  const out = [];
+  for (const h of cond.hours) {
+    const a = Math.max(start, h.t), b = Math.min(end, h.t + hourMs);
+    if (b > a) out.push({ t: h.t, frac: Math.round((b - a) / hourMs * 100) / 100, score: scoreHour(ctx.sp, h, ctx).score });
+  }
+  return out;
+}
+const BANDS = ["Hot", "Good", "Fair", "Slow"];
+const MIN_TRIPS = 3, MIN_HOURS = 6, MIN_FISH = 5, SOLID_TRIPS = 10, SOLID_FISH = 15;
+// Fish per hour in each score band, from finished trips and the catches logged during them.
+function reportCard(trips, catches) {
+  const done = trips.filter(t => t.end && t.hours && t.hours.length);
+  const bands = Object.fromEntries(BANDS.map(k => [k, { hours: 0, fish: 0 }]));
+  for (const tr of done) {
+    for (const h of tr.hours) bands[scoreLabel(h.score)].hours += h.frac;
+    if (tr.fish) { // a past trip logged with a fish count: credit its average score
+      const w = tr.hours.reduce((a, h) => a + h.frac, 0), avg = tr.hours.reduce((a, h) => a + h.score * h.frac, 0) / (w || 1);
+      bands[scoreLabel(avg)].fish += tr.fish;
+    }
+  }
+  const byId = new Map(done.map(t => [t.id, t]));
+  for (const c of catches) {
+    const tr = byId.get(c.tripId);
+    if (!tr) continue;
+    let s = c.snap && c.snap.score;
+    if (s == null) { const h = tr.hours.find(h => c.t >= h.t && c.t < h.t + hourMs); s = h && h.score; }
+    if (s != null) bands[scoreLabel(s)].fish += c.count || 1;
+  }
+  const sum = keys => keys.reduce((a, k) => ({ hours: a.hours + bands[k].hours, fish: a.fish + bands[k].fish }), { hours: 0, fish: 0 });
+  const rate = g => ({ ...g, rate: g.hours > 0 ? g.fish / g.hours : 0 });
+  const hi = rate(sum(["Hot", "Good"])), lo = rate(sum(["Fair", "Slow"])), all = rate(sum(BANDS));
+  for (const k of BANDS) bands[k].rate = bands[k].hours > 0 ? bands[k].fish / bands[k].hours : 0;
+  let verdict;
+  if (done.length < MIN_TRIPS || all.hours < MIN_HOURS || all.fish < MIN_FISH) verdict = "learning";
+  else if (hi.hours < 2 || lo.hours < 2) verdict = "one-sided";
+  else if (hi.rate >= 1.5 * lo.rate && hi.rate - lo.rate >= 0.15) verdict = "working";
+  else if (lo.rate >= 1.5 * hi.rate && lo.rate - hi.rate >= 0.15) verdict = "backwards";
+  else verdict = "unclear";
+  // A handful of trips is an early read; say so rather than overclaim.
+  const solid = done.length >= SOLID_TRIPS && all.fish >= SOLID_FISH;
+  return { trips: done.length, bands, hi, lo, all, verdict, solid, ratio: lo.rate > 0 ? hi.rate / lo.rate : null,
+    need: { trips: Math.max(0, MIN_TRIPS - done.length), hours: Math.max(0, MIN_HOURS - all.hours), fish: Math.max(0, MIN_FISH - all.fish) } };
+}
+
+if (typeof module !== "undefined") module.exports = { scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };

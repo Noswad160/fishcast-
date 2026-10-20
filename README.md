@@ -15,7 +15,9 @@ A fishing forecast that gives tips for each spot, species and set of conditions,
   - a 0–100 bite score with a plain-English summary: how good, when to go, and what to start with
   - the factors behind the score, the best 2-hour windows, and a 48-hour chart
   - a game plan: the seasonal pattern for your species at today's water temperature, tips for today's conditions, and tips for each kind of structure at the spot
-- **Catch log**: tap **＋ Catch**, pick the species and lure, and save. Conditions are saved automatically. Log trips with no bites too. Fishcast shows what worked at each spot in conditions like today's, and your patterns by lure, time of day, pressure, sky and water temperature.
+- **Trips**: tap **Start trip** when you get to the water and **End trip** when you leave (forgot? set the length when you end it, or log a past trip). Catches logged in between belong to the trip, and every hour fished is scored with the same bite score you saw on Today, using the weather that actually happened.
+- **Forecast report card**: fish per hour by what the score said (Hot, Good, Fair, Slow) at each spot, with a plain verdict: the forecast is working here, there's no clear difference, or it's backwards here. It waits for at least 3 trips, 6 hours and 5 fish, and calls it an early read until 10 trips and 15 fish. No other fishing app shows whether its forecast actually works.
+- **Catch log**: tap **＋ Catch**, pick the species and lure, and save. Conditions and the bite score are saved automatically. Fishcast shows what worked at each spot in conditions like today's, and your patterns by lure, time of day, pressure, sky and water temperature.
 - **Backup**: spots and catches are stored on your phone. Save a backup file from the Spots tab, and restore it on a new phone.
 
 ## Accuracy notes

@@ -274,3 +274,21 @@ body.locked .mapcard { visibility: hidden; }
 .sheet:not([hidden]) .panel { will-change: transform; }
 .panel.dragging { user-select: none; -webkit-user-select: none; }
 .sheet .scrim { will-change: opacity; }
+
+/* trips and report card */
+.tripbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); }
+.tripbar > div:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tripbar.on { border-color: var(--accent); background: var(--accent-soft); }
+.tripbar .btn { flex: none; }
+.verdict { font-weight: 600; border-left: 4px solid var(--s1); padding-left: 10px; }
+.verdict.working { border-color: var(--good); }
+.verdict.backwards { border-color: var(--bad); }
+.verdict.unclear, .verdict.one-sided { border-color: var(--warn); }
+.rc { display: flex; flex-direction: column; gap: 8px; }
+.rcrow { display: grid; grid-template-columns: 72px 1fr 52px minmax(0, auto); gap: 8px; align-items: center; }
+.rcrow.head { font-size: .78rem; }
+.rcband { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.rcband i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.rc .track { height: 10px; background: var(--water-soft); border-radius: 5px; overflow: hidden; }
+.rc .fill { display: block; height: 100%; }
+input[type="datetime-local"] { font: inherit; color: inherit; background: var(--raised); border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; width: 100%; min-width: 0; min-height: 46px; }

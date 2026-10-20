@@ -102,3 +102,40 @@ test("reads coordinates in the formats people paste", () => {
   assert.ok(Math.abs(dms2.lat - 35.25011) < 1e-4 && Math.abs(dms2.lon + 91.73650) < 1e-4, JSON.stringify(dms2));
   for (const bad of ["", "Searcy", "35.25", "https://maps.app.goo.gl/AbC123xyz", "95, 20", "35, 200"]) assert.strictEqual(E.parseCoords(bad), null, bad);
 });
+
+test("a trip is scored hour by hour, including partial hours", () => {
+  const cond = E.manualCond(base); cond.mode = "live";
+  const h0 = cond.hours.find(h => h.t >= Date.now() - 6 * 36e5).t;
+  const hours = E.scoreTrip(lake, cond, "lmb", h0 + 30 * 60e3, h0 + 3 * 36e5);   // 2.5 h
+  assert.deepStrictEqual(hours.map(h => h.frac), [0.5, 1, 1]);
+  assert.ok(hours.every(h => h.score >= 1 && h.score <= 99));
+});
+
+test("report card: fish per hour by score band and a verdict", () => {
+  const H = 36e5, t0 = Date.UTC(2026, 9, 1, 12);
+  const trip = (id, day, scores, extra = {}) => ({ id, kind: "trip", start: t0 + day * 864e5, end: t0 + day * 864e5 + scores.length * H,
+    hours: scores.map((score, i) => ({ t: t0 + day * 864e5 + i * H, frac: 1, score })), ...extra });
+  const trips = [trip("a", 0, [80, 70, 40]), trip("b", 1, [65, 30, 35]), trip("c", 2, [72, 44])];
+  const catch_ = (tripId, day, hr, score) => ({ kind: "catch", tripId, t: t0 + day * 864e5 + hr * H + 600e3, count: 1, snap: score == null ? null : { score } });
+  // 5 fish in Good/Hot hours (4 h), 1 fish in Fair/Slow hours (4 h); one catch has no saved score and is placed by its trip hour.
+  const catches = [catch_("a", 0, 0, 80), catch_("a", 0, 1, 70), catch_("a", 0, 1, 70), catch_("b", 1, 0, 65), catch_("c", 2, 0, null), catch_("b", 1, 2, 35), catch_("zzz", 0, 0, 90)];
+  const r = E.reportCard(trips, catches);
+  assert.strictEqual(r.trips, 3);
+  assert.strictEqual(r.hi.hours, 4); assert.strictEqual(r.hi.fish, 5);
+  assert.strictEqual(r.lo.hours, 4); assert.strictEqual(r.lo.fish, 1);
+  assert.strictEqual(r.verdict, "working");
+  assert.strictEqual(r.ratio, 5);
+  // Not enough trips yet
+  assert.strictEqual(E.reportCard(trips.slice(0, 2), catches).verdict, "learning");
+  assert.strictEqual(E.reportCard(trips, catches).solid, false);   // 3 trips, 6 fish: an early read
+  // Too few fish to judge, even with enough trips and hours
+  assert.strictEqual(E.reportCard(trips, [catch_("a", 0, 0, 80), catch_("b", 1, 1, 30)]).verdict, "learning");
+  // Same catch rate in both halves: no evidence the score helps
+  const even = [0, 1, 1].map(h => catch_("a", 0, h, 75)).concat([2].map(h => catch_("a", 0, h, 40)), [1, 2].map(h => catch_("b", 1, h, 30)));
+  assert.strictEqual(E.reportCard(trips, even).verdict, "unclear");
+  // Unfinished trips don't count
+  assert.strictEqual(E.reportCard([...trips, { id: "live", start: t0, end: null }], catches).trips, 3);
+  // A past trip logged with a fish count is credited at its average score
+  const past = trip("p", 5, [30, 30, 30], { fish: 3 });
+  assert.strictEqual(E.reportCard([...trips, past], catches).lo.fish, 4);
+});
