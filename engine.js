@@ -182,6 +182,17 @@ function fmtTime(ms, tz) {
 }
 function fmtHour(ms, tz) { const h = shifted(ms, tz).getUTCHours(); return (h % 12 || 12) + (h < 12 ? "a" : "p"); }
 function fmtDay(ms, tz) { return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][shifted(ms, tz).getUTCDay()]; }
+// "today", "tomorrow", or the weekday, in the spot's own time zone.
+function dayWord(ms, tz) {
+  const day = t => Math.floor((t + tz * 1000) / 864e5), diff = day(ms) - day(Date.now());
+  return diff === 0 ? "today" : diff === 1 ? "tomorrow" : fmtDay(ms, tz);
+}
+// Compact hour range: "7–9 AM", "11 AM–1 PM".
+function fmtRange(a, b, tz) {
+  const part = ms => { const d = shifted(ms, tz), h = d.getUTCHours(), m = d.getUTCMinutes(); return { n: (h % 12 || 12) + (m ? ":" + String(m).padStart(2, "0") : ""), ap: h < 12 ? "AM" : "PM" }; };
+  const x = part(a), y = part(b);
+  return x.ap === y.ap ? `${x.n}–${y.n} ${y.ap}` : `${x.n} ${x.ap}–${y.n} ${y.ap}`;
+}
 function fmtDate(ms, tz) { const d = shifted(ms, tz); return fmtDay(ms, tz) + " " + ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getUTCMonth()] + " " + d.getUTCDate(); }
 const deviceTz = () => -new Date().getTimezoneOffset() * 60;
 async function getJSON(url, ms = 9000) {
@@ -294,7 +305,7 @@ function waterOf(spot, cond) {
   if (r && r.water != null && Date.now() - (r.waterAt ?? r.at) < 3 * 864e5) return { v: r.water, src: "your reading" };
   if (cond.mode === "manual") return { v: cond.waterEst, src: "entered" };
   const g = gaugeFor(spot, cond);
-  if (g) return { v: Math.round(g.f), src: `USGS gauge · ${Math.round(g.dist)} mi`, gauge: g };
+  if (g) return { v: Math.round(g.f), src: `USGS · ${Math.round(g.dist)} mi`, gauge: g };
   if (cond.sst != null) return { v: Math.round(cond.sst), src: "sea surface" };
   return { v: cond.waterEst ?? 60, src: "estimate" };
 }
@@ -520,9 +531,9 @@ function headline(ctx) {
   const s = ctx.now.score, wins = bestWindows(ctx.future), tz = ctx.tz;
   const next = wins.find(w => w.end > Date.now());
   const lead = { Hot: "The bite should be hot", Good: "A good bite is likely", Fair: "Fair bite", Slow: "Slow bite expected" }[scoreLabel(s)];
-  const when = !next ? "" : next.start <= Date.now() ? " Now is one of the best windows." : ` Best window: ${fmtDay(next.start, tz) === fmtDay(Date.now(), tz) ? "today" : fmtDay(next.start, tz)} ${fmtTime(next.start, tz)}.`;
+  const when = !next ? "" : next.start <= Date.now() ? " Right now is one of the best windows." : ` Best window: ${dayWord(next.start, tz)} ${fmtRange(next.start, next.end, tz)}.`;
   const bait = ctx.phase.baits[0].replace(/\s*\(.*\)$/, "");
   return `${lead} for ${ctx.sp.name.toLowerCase()}.${when} Start with a ${bait.charAt(0).toLowerCase() + bait.slice(1)}.`;
 }
 
-if (typeof module !== "undefined") module.exports = { parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };
+if (typeof module !== "undefined") module.exports = { dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };

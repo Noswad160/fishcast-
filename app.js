@@ -158,6 +158,14 @@ const chip = (type, name, value, label, checked) => `<label class="chip"><input 
 const stepper = (id, value, step, min) => `<span class="stepper"><button type="button" data-act="step" data-for="${id}" data-d="-${step}" aria-label="Less">−</button><input type="number" id="${id}" value="${esc(value)}" step="${step}" min="${min}" inputmode="decimal"><button type="button" data-act="step" data-for="${id}" data-d="${step}" aria-label="More">+</button></span>`;
 const ICON_PIN = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>`;
 const ICON_MAP = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>`;
+const ICON_TRASH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>`;
+// Words people use, for the values saved with each catch.
+const LABELS = {
+  light: { dawn: "Dawn", day: "Daytime", dusk: "Dusk", night: "Night" },
+  trend: { falling: "Falling", steady: "Steady", rising: "Rising", "post-front": "After a front" },
+  sky: { sunny: "Sunny", partly: "Partly cloudy", overcast: "Overcast", rain: "Rain" },
+  solunar: { major: "Major period", minor: "Minor period", "": "Outside periods" },
+};
 const ICON_EDIT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>`;
 const bars = rows => `<div class="bars">${rows.slice(0, 5).map(([k, n]) => `<div class="bar"><span>${esc(k)}</span><span class="track"><span class="fill" style="width:${Math.round(n / rows[0][1] * 100)}%"></span></span><span class="n">${n}</span></div>`).join("")}</div>`;
 function tally(list, key) {
@@ -194,7 +202,7 @@ function chartSvg(ctx) {
     s += `<rect x="${x}" y="${base - hgt}" width="${W}" height="${hgt}" rx="2" fill="${scoreColor(d.score)}"><title>${fmtDay(d.t, ctx.tz)} ${fmtHour(d.t, ctx.tz)}: ${d.score} (${scoreLabel(d.score)})</title></rect>`;
     if (d.sol) s += `<circle cx="${x + W / 2}" cy="${top - 8}" r="${d.sol === "major" ? 3.5 : 2.2}" fill="var(--ink)"/>`;
     if (hr % 6 === 0) s += `<text x="${x + W / 2}" y="${base + 12}" font-size="8.5" text-anchor="middle" fill="var(--muted)" font-family="IBM Plex Mono, monospace">${fmtHour(d.t, ctx.tz)}</text>`;
-    if (hr === 0 || i === 0) s += `<text x="${x}" y="${base + 26}" font-size="9" fill="var(--ink)" font-family="Barlow Condensed, sans-serif" font-weight="600">${i === 0 ? "NOW" : fmtDay(d.t, ctx.tz).toUpperCase()}</text>`;
+    if (i === 0 || (hr === 0 && i >= 4)) s += `<text x="${x}" y="${base + 26}" font-size="9" fill="var(--ink)" font-family="Barlow Condensed, sans-serif" font-weight="600">${i === 0 ? "NOW" : fmtDay(d.t, ctx.tz).toUpperCase()}</text>`;
     if (hr === 0 && i) s += `<line x1="${x - 1}" x2="${x - 1}" y1="${top - 12}" y2="${base + 16}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="2 2"/>`;
   });
   s += `<rect x="29" y="${top - 1}" width="${W + 2}" height="${H + 2}" fill="none" stroke="var(--ink)" stroke-width="1.2" rx="2"/>`;
@@ -220,13 +228,14 @@ function renderToday() {
     <div class="hero">
       <div class="dial">${dialSvg(now.score)}<div class="num"><b>${now.score}</b><span style="color:${scoreColor(now.score)}">${scoreLabel(now.score)}</span></div></div>
       <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
-        <span class="label">${esc(ctx.phase.name)} pattern · ${water.v}°F water</span>
+        <span class="label">${esc(ctx.phase.name)} · ${water.v}°F water</span>
         <p class="headline">${esc(headline(ctx))}</p>
       </div>
     </div>
+    <button class="linkbtn small" data-act="howScore" style="padding:0">How is this scored?</button>
     <div class="factors">${ups.map(f => `<span class="factor up">+${f.v} ${esc(f.label)}</span>`).join("")}${downs.map(f => `<span class="factor down">${f.v} ${esc(f.label)}</span>`).join("")}</div>
     <span class="label">Best times, next 48 hours</span>
-    <div class="hscroll">${wins.map(w => { const on = w.start <= Date.now() && w.end > Date.now(); return `<div class="win${on ? " now" : ""}"><span class="small muted">${on ? "Now" : fmtDay(w.start, tz)}</span><b>${fmtTime(w.start, tz)}–${fmtTime(w.end, tz)}</b><span class="small" style="color:${scoreColor(w.avg)}">${scoreLabel(w.avg)} · ${w.avg}</span></div>`; }).join("")}</div>
+    <div class="hscroll">${wins.map(w => { const on = w.start <= Date.now() && w.end > Date.now(); return `<div class="win${on ? " now" : ""}"><span class="small muted">${on ? "Now" : (d => d.charAt(0).toUpperCase() + d.slice(1))(dayWord(w.start, tz))}</span><b>${fmtRange(w.start, w.end, tz)}</b><span class="small" style="color:${scoreColor(w.avg)}">${scoreLabel(w.avg)} · ${w.avg}</span></div>`; }).join("")}</div>
   </section>`;
 
   const sunrise = astro.sunrise.find(t => t > Date.now() - 12 * hourMs), sunset = astro.sunset.find(t => t > Date.now() - 2 * hourMs), moon = moonIllum(Date.now());
@@ -234,14 +243,13 @@ function renderToday() {
   const trendArrow = h.trend3 <= -0.03 ? "↓" : h.trend3 >= 0.03 ? "↑" : "→";
   html += `<section class="tiles" aria-label="Conditions">
     <button class="tile${est ? " flag" : ""}" data-act="reading"><span class="label">Water</span><span class="v">${water.v}°F</span><span class="s">${est ? "est. · tap to set" : esc(water.src)}</span></button>
-    <div class="tile"><span class="label">Air</span><span class="v">${Math.round(h.air)}°F</span><span class="s">${skyCat(h)}</span></div>
+    <div class="tile"><span class="label">Air</span><span class="v">${Math.round(h.air)}°F</span><span class="s">${LABELS.sky[skyCat(h)].toLowerCase()}</span></div>
     <div class="tile"><span class="label">Wind</span><span class="v">${Math.round(h.wind)} ${compass(h.dir)}</span><span class="s">mph · gusts ${Math.round(h.gust)}</span></div>
     <div class="tile"><span class="label">Pressure</span><span class="v">${cond.mode === "manual" ? "" : h.pres.toFixed(2) + " "}${trendArrow}</span><span class="s">${trendCat(h)}</span></div>
     <div class="tile"><span class="label">Sun</span><span class="v">${sunrise ? fmtTime(sunrise, tz) : "—"}</span><span class="s">sets ${sunset ? fmtTime(sunset, tz) : "—"}</span></div>
     <div class="tile"><span class="label">Moon</span><span class="v">${Math.round(moon.fraction * 100)}%</span><span class="s">${moonPhaseName(moon.phase)}</span></div>
     ${salt ? `<button class="tile${tide ? "" : " flag"}" data-act="reading"><span class="label">Tide</span><span class="v">${tide ? { rising: "Incoming", falling: "Outgoing", slack: "Slack" }[tide] : "Not set"}</span><span class="s">tap to ${tide ? "change" : "set"}</span></button>` : ""}
     ${salt && ctx.wave != null ? `<div class="tile"><span class="label">Waves</span><span class="v">${ctx.wave.toFixed(1)} ft</span><span class="s">forecast</span></div>` : ""}
-    <button class="tile" data-act="reading"><span class="label">Clarity</span><span class="v">${esc(clarityOf(spot))}</span><span class="s">tap to change</span></button>
   </section>`;
 
   html += `<section class="card" aria-label="48-hour forecast"><h3>Next 48 hours</h3><div class="chart">${chartSvg(ctx)}</div>
@@ -293,7 +301,7 @@ function spotScore(spot) {
 function renderSpots() {
   const own = ownSpots(), list = spots().map(s => ({ s, score: spotScore(s) }));
   list.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
-  const best = list.length > 1 && list[0].score != null ? list[0].s.id : null;
+  const best = list.length > 1 && list[0].score != null && list[0].score > (list[1].score ?? -1) ? list[0].s.id : null;
   // The map keeps its own state; later renders (forecasts arriving) only refresh its pins.
   if (S.spotsMode === "map" && view.dataset.screen === "spotsmap" && spotsMap && $("#spotsMap")) { updateSpotMarkers(false); warmSpots(); return; }
   let html = `<div class="row" style="justify-content:space-between"><h2>Your spots</h2><button class="btn" data-act="newSpot">${ICON_PIN}Add spot</button></div>
@@ -327,25 +335,31 @@ function renderLog() {
   const spot = curSpot(), tz = cachedCond(spot.id)?.tz ?? deviceTz();
   const here = entries().filter(e => e.spotId === spot.id).sort((a, b) => b.t - a.t);
   const catches = here.filter(e => e.count > 0), blanks = here.filter(e => !e.count);
-  let html = `<div class="row" style="justify-content:space-between"><h2>Catches</h2>${spot.example ? '<span class="example">Example</span>' : ""}</div>`;
+  let html = `<div class="row" style="justify-content:space-between"><h2>Catches at ${esc(spot.name)}</h2>${spot.example ? '<span class="example">Example</span>' : ""}</div>`;
   if (!here.length) html += `<section class="card"><p>Nothing logged at ${esc(spot.name)} yet.</p><p class="small muted">Tap <b>＋ Catch</b> when you land a fish. It saves the time and conditions automatically, so in a few trips you'll see what actually works here.</p></section>`;
   if (catches.length) {
     const total = catches.reduce((a, e) => a + (e.count || 1), 0), hrs = blanks.reduce((a, e) => a + (e.hours || 0), 0);
     const band = e => e.snap?.water == null ? "" : (Math.floor(e.snap.water / 5) * 5) + "–" + (Math.floor(e.snap.water / 5) * 5 + 4) + "°F";
-    const sec = (title, rows) => rows.length ? `<div class="field"><span class="label">${title}</span>${bars(rows)}</div>` : "";
-    html += `<section class="card" aria-label="Patterns"><h3>Patterns</h3>
-      <p class="small">${total} fish${blanks.length ? ` · ${blanks.length} trip${blanks.length > 1 ? "s" : ""} (${hrs} h) with no bites` : ""}</p>
-      <div class="grid2" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
-        ${sec("Lures", tally(catches, "lure"))}${sec("Time of day", tally(catches, e => e.snap?.light))}${sec("Pressure", tally(catches, e => e.snap?.trend))}
-        ${sec("Sky", tally(catches, e => e.snap?.sky))}${sec("Water temp", tally(catches, band))}
-        ${envOf(spot) === "salt" ? sec("Tide", tally(catches, e => e.snap?.tide)) : sec("Solunar", tally(catches, e => e.snap?.solunar || "outside window"))}
-      </div></section>`;
+    const groups = [
+      ["Lure", tally(catches, "lure")],
+      ["Time of day", tally(catches, e => LABELS.light[e.snap?.light])],
+      ["Pressure", tally(catches, e => LABELS.trend[e.snap?.trend])],
+      ["Water temp", tally(catches, band)],
+      ["Sky", tally(catches, e => LABELS.sky[e.snap?.sky])],
+      ["Solunar", tally(catches, e => e.snap ? LABELS.solunar[e.snap.solunar || ""] : "")],
+    ].filter(([, rows]) => rows.length);
+    const sec = ([title, rows]) => `<div class="field"><span class="label">${title}</span>${bars(rows)}</div>`;
+    html += `<section class="card" aria-label="Patterns"><h3>What's working</h3>
+      <p class="small muted">${total} fish${blanks.length ? ` · ${blanks.length} trip${blanks.length > 1 ? "s" : ""} (${hrs} h) with no bites` : ""}</p>
+      <dl class="stats">${groups.slice(0, 4).map(([title, rows]) => `<div><dt class="label">${title}</dt><dd>${esc(rows[0][0])}<span class="muted small">${rows[0][1]} of ${total} fish</span></dd></div>`).join("")}</dl>
+      <details><summary>All patterns</summary><div class="grid2" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-top:8px">${groups.map(sec).join("")}</div></details>
+    </section>`;
   }
   if (here.length) html += `<section class="list" aria-label="History">${here.map(e => `<div class="item">
-    <div class="head"><b>${e.count > 0 ? `${e.count > 1 ? e.count + " × " : ""}${esc(SPECIES[e.species]?.name || e.species)}${e.length ? ` · ${esc(e.length)} in` : ""}` : `No bites · ${esc(e.hours)} h`}</b><span class="small muted">${fmtDate(e.t, tz)} · ${fmtTime(e.t, tz)}</span></div>
+    <div class="head"><span style="display:flex;flex-direction:column;min-width:0"><b>${e.count > 0 ? `${e.count > 1 ? e.count + " × " : ""}${esc(SPECIES[e.species]?.name || e.species)}${e.length ? ` · ${esc(e.length)} in` : ""}` : `No bites · ${esc(e.hours)} h`}</b><span class="small muted">${fmtDate(e.t, tz)} · ${fmtTime(e.t, tz)}</span></span>
+      ${e.example ? "" : `<button class="iconbtn del" data-act="delEntry" data-id="${esc(e.id)}" aria-label="Delete this entry">${ICON_TRASH}</button>`}</div>
     ${e.lure || e.depth || e.notes ? `<span class="small">${[e.lure, e.depth ? e.depth + " ft" : "", e.notes].filter(Boolean).map(esc).join(" · ")}</span>` : ""}
-    ${e.snap ? `<span class="small muted">${e.snap.water}°F · ${esc(e.snap.trend)} · ${esc(e.snap.sky)} · ${esc(e.snap.light)}${e.snap.wind != null ? ` · wind ${e.snap.wind} ${esc(e.snap.windDir || "")}` : ""}${e.snap.tide ? ` · ${esc(e.snap.tide)} tide` : ""}</span>` : ""}
-    ${e.example ? "" : `<div><button class="linkbtn small" data-act="delEntry" data-id="${esc(e.id)}" style="color:var(--bad)">Delete</button></div>`}
+    ${e.snap ? `<span class="small muted">${[e.snap.water + "°F water", LABELS.trend[e.snap.trend] && LABELS.trend[e.snap.trend].toLowerCase() + " pressure", LABELS.sky[e.snap.sky] && LABELS.sky[e.snap.sky].toLowerCase(), LABELS.light[e.snap.light] && LABELS.light[e.snap.light].toLowerCase(), e.snap.wind != null ? `wind ${e.snap.wind} mph ${e.snap.windDir || ""}`.trim() : ""].filter(Boolean).map(esc).join(" · ")}</span>` : ""}
   </div>`).join("")}</section>`;
   view.innerHTML = html;
 }
@@ -519,6 +533,17 @@ document.addEventListener("click", async e => {
     case "logCatch": logSheet("catch"); break;
     case "logBlank": logSheet("blank"); break;
     case "reading": readingSheet(); break;
+    case "howScore": openSheet(`<div class="body"><h3 id="sheetTitle">How the bite score works</h3>
+      <p>Every hour gets a score from 0 to 100 for the species you picked. It starts at 50 and moves with the things that usually make fish feed:</p>
+      <ul class="tips">
+        <li class="tip"><div><b>Water temperature</b><span class="small">The biggest factor. Water far outside a species' comfort range pulls the score down a lot.</span></div></li>
+        <li class="tip"><div><b>Light</b><span class="small">Dawn and dusk score higher, more so for low-light feeders like walleye. Bright midday sun scores lower.</span></div></li>
+        <li class="tip"><div><b>Pressure and fronts</b><span class="small">Falling pressure before a front scores higher. The day or two after a cold front scores lower.</span></div></li>
+        <li class="tip"><div><b>Wind, clouds and rain</b><span class="small">A light chop, overcast skies and light rain help. Strong wind and heavy rain hurt.</span></div></li>
+        <li class="tip"><div><b>Moon</b><span class="small">Solunar periods (moon overhead, underfoot, rising or setting) and new or full moons add a little.</span></div></li>
+      </ul>
+      <p class="small muted">75+ is Hot, 60+ Good, 45+ Fair, below that Slow. These are rules of thumb anglers have used for decades, not a guarantee. Your catch log shows what actually works at each spot.</p>
+      <button class="btn big ghost" data-act="closeSheet">Got it</button></div>`); break;
     case "manual": manualSheet(); break;
     case "export": exportBackup(); break;
     case "step": {

@@ -63,7 +63,17 @@ test("a gauge feeds water temperature and a trend tip, and can be turned off per
   cond.gauge = { id: "x", name: "NEAR RIVER", dist: 4.2, at: Date.now() - 36e5, f: 58.3, change: -3.2, spanH: 70 };
   const ctx = E.buildCtx(lake, cond, "lmb");
   assert.strictEqual(ctx.water.v, 58);
-  assert.match(ctx.water.src, /USGS gauge · 4 mi/);
+  assert.match(ctx.water.src, /USGS · 4 mi/);
   assert.ok(E.conditionTips(ctx).some(t => /Water cooled 3.2°F/.test(t.title)));
   assert.notStrictEqual(E.buildCtx({ ...lake, gauge: "off" }, cond, "lmb").water.src.slice(0, 4), "USGS");
+});
+
+test("time ranges and day words read naturally", () => {
+  const tz = -18000, mid = Math.floor((Date.now() + tz * 1000) / 864e5) * 864e5 - tz * 1000, h = 36e5;
+  assert.strictEqual(E.fmtRange(mid + 7 * h, mid + 9 * h, tz), "7–9 AM");
+  assert.strictEqual(E.fmtRange(mid + 11 * h, mid + 13 * h, tz), "11 AM–1 PM");
+  assert.strictEqual(E.fmtRange(mid + 23 * h, mid + 25 * h, tz), "11 PM–1 AM");
+  assert.strictEqual(E.dayWord(mid + 5 * h, tz), "today");
+  assert.strictEqual(E.dayWord(mid + 29 * h, tz), "tomorrow");
+  assert.match(E.dayWord(mid + 53 * h, tz), /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)$/);
 });
