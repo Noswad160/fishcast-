@@ -5,7 +5,8 @@ A fishing forecast that gives tips for each spot, species and set of conditions,
 **Use it:** https://noswad160.github.io/fishcast-/. On your phone, add it to your home screen (Safari: Share button, then *Add to Home Screen*; Chrome: ⋮ menu, then *Add to Home screen*). It then opens full screen like an app and keeps working without signal.
 
 ## What it does
-- **Spots**: add one in a few taps (use your location, search a lake, or paste coordinates), pick the water type and species, and optionally the structure there (points, docks, grass, rock, ledges…). The Spots tab ranks your spots by how good the bite is right now.
+- **Spots**: add one in a few taps. Use where you're standing, search a lake, or **pick it on a map**: satellite or street view, drag until the pin sits on your point, dock or creek mouth. Then choose the water type, the species and, optionally, the structure there (points, docks, grass, rock, ledges…).
+- **Spots tab**: your spots ranked by how good the bite is right now, as a list or as pins on a map. Tap a pin for its forecast, or long-press the map to add a spot there.
 - **Live conditions**, with no API keys needed:
   - water temperature and its 3-day trend from the nearest USGS gauge, where there is one
   - air temperature, wind, gusts, pressure and its trend, cloud cover, rain and cold-front detection, from [Open-Meteo](https://open-meteo.com)
@@ -29,6 +30,7 @@ A fishing forecast that gives tips for each spot, species and set of conditions,
 - `index.html`, `styles.css`: the app shell.
 - `engine.js`: forecast logic (astronomy, species data, gauges, scoring, tips). Doesn't touch the page, so it's tested in Node.
 - `app.js`: screens, bottom sheets, storage and the per-spot forecast cache.
+- `map.js`: map picker and spots map ([Leaflet](https://leafletjs.com), loaded only when a map opens; satellite imagery from Esri, street map from OpenStreetMap).
 - `sw.js`, `manifest.webmanifest`, icons: installable app and offline support. Bump `VERSION` in `sw.js` when app files change.
 - `test/`: engine tests. Run `node --test test/*.test.js`; they also run before every deploy.
 

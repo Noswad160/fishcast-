@@ -39,6 +39,7 @@ function exampleCatches() {
 const S = {
   tab: LS.get("fishcast.tab", "today"), spotId: LS.get("fishcast.spot", null), speciesId: LS.get("fishcast.species", null),
   manual: LS.get("fishcast.manual", { air: 68, water: 64, wind: 8, windDir: "SW", sky: "partly", trend: "steady" }),
+  spotsMode: LS.get("fishcast.spotsMode", "list"),
   conds: {}, loading: {}, errors: {}, tried: {}, warming: false,
 };
 const ownSpots = () => Store.list("spot").sort((a, b) => a.name.localeCompare(b.name));
@@ -118,6 +119,7 @@ function closeSheet() {
 const chip = (type, name, value, label, checked) => `<label class="chip"><input type="${type}" name="${name}" value="${esc(value)}"${checked ? " checked" : ""}>${esc(label)}</label>`;
 const stepper = (id, value, step, min) => `<span class="stepper"><button type="button" data-act="step" data-for="${id}" data-d="-${step}" aria-label="Less">−</button><input type="number" id="${id}" value="${esc(value)}" step="${step}" min="${min}" inputmode="decimal"><button type="button" data-act="step" data-for="${id}" data-d="${step}" aria-label="More">+</button></span>`;
 const ICON_PIN = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>`;
+const ICON_MAP = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>`;
 const ICON_EDIT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>`;
 const bars = rows => `<div class="bars">${rows.slice(0, 5).map(([k, n]) => `<div class="bar"><span>${esc(k)}</span><span class="track"><span class="fill" style="width:${Math.round(n / rows[0][1] * 100)}%"></span></span><span class="n">${n}</span></div>`).join("")}</div>`;
 function tally(list, key) {
@@ -136,6 +138,7 @@ function render() {
   $$(".navbtn").forEach(b => b.dataset.tab === S.tab ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
   $("#fab").hidden = S.tab === "spots";
   $("#refreshBtn").classList.toggle("spin", !!S.loading[spot.id]);
+  if (!(S.tab === "spots" && S.spotsMode === "map")) { dropSpotsMap(); delete view.dataset.screen; }
   if (S.tab === "spots") renderSpots(); else if (S.tab === "log") renderLog(); else renderToday();
 }
 
@@ -253,8 +256,18 @@ function renderSpots() {
   const own = ownSpots(), list = spots().map(s => ({ s, score: spotScore(s) }));
   list.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
   const best = list.length > 1 && list[0].score != null ? list[0].s.id : null;
-  let html = `<div class="row" style="justify-content:space-between"><h2>Your spots</h2><button class="btn" data-act="newSpot">${ICON_PIN}Add spot</button></div>`;
+  // The map keeps its own state; later renders (forecasts arriving) only refresh its pins.
+  if (S.spotsMode === "map" && view.dataset.screen === "spotsmap" && spotsMap && $("#spotsMap")) { updateSpotMarkers(false); warmSpots(); return; }
+  let html = `<div class="row" style="justify-content:space-between"><h2>Your spots</h2><button class="btn" data-act="newSpot">${ICON_PIN}Add spot</button></div>
+    <div class="chips" role="group" aria-label="Show spots as">${[["list", "List"], ["map", "Map"]].map(([k, l]) => `<button class="chip" data-act="spotsMode" data-id="${k}" aria-pressed="${S.spotsMode === k}">${l}</button>`).join("")}</div>`;
   if (!own.length) html += `<p class="empty">You haven't added a spot yet. Add the places you fish, and Fishcast ranks them by how good the bite is right now.</p>`;
+  if (S.spotsMode === "map") {
+    view.innerHTML = html + `<div class="mapcard"><div id="spotsMap" class="mapbox" aria-label="Map of your spots"></div><button type="button" class="btn sm maplayer" data-act="mapLayer">${layerPref() === "satellite" ? "Map view" : "Satellite"}</button></div>
+      <p class="small muted">Pins show the bite score right now. Tap one for its forecast, or long-press the map to add a spot there.</p>`;
+    view.dataset.screen = "spotsmap";
+    showSpotsMap($("#spotsMap")); warmSpots();
+    return;
+  }
   html += `<div class="list">${list.map(({ s, score }) => `<div class="item${s.id === best ? " best" : ""}" style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center">
       <button class="spotcard" data-act="openSpot" data-id="${esc(s.id)}" style="border:0;background:none;padding:0;display:flex;flex-direction:column;gap:2px;align-items:flex-start">
         ${s.id === best ? '<span class="label" style="color:var(--accent)">Best bite right now</span>' : ""}
@@ -340,11 +353,11 @@ function logSheet(kind) {
 }
 
 function spotSheet(spot) {
-  const s = spot || { name: "", water: "lake", clarity: "stained", structures: [], species: [] };
+  const s = { name: "", water: "lake", clarity: "stained", structures: [], species: [], ...(spot || {}) };
   openSheet(`<form id="spotForm" data-id="${esc(s.id || "")}" novalidate>
     <h3 id="sheetTitle">${s.id ? "Edit spot" : "Add a spot"}</h3>
     <div class="field"><span class="label">Where is it?</span>
-      <button type="button" class="btn" data-act="geoloc">${ICON_PIN}Use my current location</button>
+      <div class="grid2"><button type="button" class="btn" data-act="geoloc">${ICON_PIN}I'm here now</button><button type="button" class="btn ghost" data-act="pickOnMap">${ICON_MAP}Pick on map</button></div>
       <div class="row"><input type="search" id="fSearch" placeholder="Search a lake or town" style="flex:1 1 160px"><button type="button" class="btn ghost" data-act="search">Search</button></div>
       <div id="searchOut" class="list"></div>
       <input type="text" id="fCoords" value="${s.lat != null ? esc(s.lat + ", " + s.lon) : ""}" placeholder="or paste coordinates, e.g. 34.4201, -86.2310">
@@ -450,6 +463,14 @@ document.addEventListener("click", async e => {
   const act = b.dataset.act, id = b.dataset.id;
   switch (act) {
     case "closeSheet": closeSheet(); break;
+    case "spotsMode": S.spotsMode = id; LS.set("fishcast.spotsMode", id); render(); break;
+    case "pickOnMap": openMapPicker(parseCoords($("#fCoords").value), c => {
+      $("#fCoords").value = c.lat + ", " + c.lon; $("#coordNote").textContent = "Location set from the map."; buzz();
+    }); break;
+    case "mapUse": usePickedSpot(); break;
+    case "mapCancel": closeMapPicker(); break;
+    case "mapLayer": toggleLayer(); break;
+    case "mapLocate": if (picker) locate(picker.map, 15, false); break;
     case "pickSpot": spotPickerSheet(); break;
     case "chooseSpot": selectSpot(id); closeSheet(); go("today"); break;
     case "openSpot": selectSpot(id); go("today"); break;
@@ -487,7 +508,7 @@ document.addEventListener("click", async e => {
     case "pickPlace":
       $("#fCoords").value = Number(b.dataset.lat).toFixed(4) + ", " + Number(b.dataset.lon).toFixed(4);
       if (!$("#fName").value) $("#fName").value = b.dataset.name;
-      $("#searchOut").innerHTML = ""; $("#coordNote").textContent = "Location set to " + b.dataset.name + ". Fine-tune by pasting exact coordinates.";
+      $("#searchOut").innerHTML = ""; $("#coordNote").textContent = "Location set to " + b.dataset.name + ". Tap Pick on map to put the pin on your exact spot.";
       break;
     case "askDelSpot": {
       const sid = $("#spotForm").dataset.id, n = Store.list("catch").filter(c => c.spotId === sid).length;
@@ -560,7 +581,10 @@ document.addEventListener("submit", e => {
   }
 });
 
-document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#sheet").hidden) closeSheet(); });
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  if (!$("#mapView").hidden) closeMapPicker(); else if (!$("#sheet").hidden) closeSheet();
+});
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.tab !== "spots") refreshCurrent(false); });
 window.addEventListener("online", () => { S.tried = {}; refreshCurrent(false); });
 
