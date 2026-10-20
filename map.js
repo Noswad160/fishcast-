@@ -5,6 +5,9 @@ const LEAFLET_URL = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/";
 let leafletP = null;
 function loadLeaflet() {
   if (window.L) return Promise.resolve(window.L);
+  // Plain 2D positioning: with 3D transforms, iOS Safari composites the map above fixed elements
+  // (the top bar and bottom sheets) no matter their z-index. Must be set before Leaflet loads.
+  window.L_DISABLE_3D = true;
   if (!leafletP) leafletP = new Promise((resolve, reject) => {
     const css = document.createElement("link");
     css.rel = "stylesheet"; css.href = LEAFLET_URL + "leaflet.css"; css.crossOrigin = "anonymous";

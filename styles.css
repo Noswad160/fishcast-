@@ -248,7 +248,7 @@ button.tile .s { color: var(--water); font-weight: 600; }
 .mapfoot { display: flex; flex-direction: column; gap: 10px; background: var(--surface); border-top: 1px solid var(--line);
   padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
 /* Leaflet's panes use z-index 400–1000; isolate them so the map never paints over the top bar, tabs or sheets. */
-.mapcard { position: relative; isolation: isolate; z-index: 0; height: min(62vh, 560px); border-radius: 16px; overflow: hidden; border: 1px solid var(--line); }
+.mapcard { position: relative; isolation: isolate; z-index: 0; transform: translateZ(0); height: min(62vh, 560px); border-radius: 16px; overflow: hidden; border: 1px solid var(--line); }
 .mapwrap { isolation: isolate; }
 /* iOS Safari can paint the map's GPU layers over fixed elements regardless of z-index.
    Hide the spots map while a form is open, and give fixed elements their own layers. */

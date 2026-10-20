@@ -590,4 +590,13 @@ window.addEventListener("online", () => { S.tried = {}; refreshCurrent(false); }
 
 /* ---------------------------------------------------------------- boot */
 render();
-if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) navigator.serviceWorker.register("sw.js").catch(() => {});
+if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+  // A home-screen app can stay open for days; tell the user when a new version has taken over.
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (hadController) toast("Fishcast was updated", { label: "Reload", fn: () => location.reload() });
+  });
+  navigator.serviceWorker.register("sw.js").then(reg => {
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reg.update().catch(() => {}); });
+  }).catch(() => {});
+}
