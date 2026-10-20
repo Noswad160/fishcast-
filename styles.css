@@ -98,7 +98,8 @@ main { padding-block: 12px 96px; display: flex; flex-direction: column; gap: 16p
   display: flex; align-items: center; gap: 6px; border: 0; border-radius: 999px; padding: 14px 20px 14px 16px; background: var(--accent); color: var(--accent-ink);
   font-family: var(--f-display); font-weight: 700; font-size: 1.1rem; letter-spacing: .04em; text-transform: uppercase; box-shadow: var(--shadow); cursor: pointer; }
 .fab svg { width: 22px; height: 22px; }
-.fab:active { transform: scale(.97); }
+.fab { transform: translateZ(0); }
+.fab:active { transform: scale(.97) translateZ(0); }
 
 /* controls */
 input[type="text"], input[type="number"], input[type="search"], textarea, select {
@@ -219,7 +220,7 @@ button.tile .s { color: var(--water); font-weight: 600; }
 .pickrow[aria-current="true"] b { color: var(--water); }
 
 /* toast */
-.toast { position: fixed; z-index: 30; left: 50%; transform: translateX(-50%); bottom: calc(var(--nav-h) + 16px + env(safe-area-inset-bottom, 0px));
+.toast { position: fixed; z-index: 30; left: 50%; transform: translateX(-50%) translateZ(0); bottom: calc(var(--nav-h) + 16px + env(safe-area-inset-bottom, 0px));
   width: min(560px, calc(100% - 32px)); display: flex; align-items: center; justify-content: space-between; gap: 12px;
   background: var(--ink); color: var(--bg); border-radius: 12px; padding: 12px 14px; box-shadow: var(--shadow); }
 .toast button { border: 0; background: none; color: var(--accent); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; cursor: pointer; padding: 4px 6px; }
@@ -246,7 +247,15 @@ button.tile .s { color: var(--water); font-weight: 600; }
 .maplocate { position: absolute; right: 12px; bottom: 28px; z-index: 500; background: var(--surface); box-shadow: var(--shadow); }
 .mapfoot { display: flex; flex-direction: column; gap: 10px; background: var(--surface); border-top: 1px solid var(--line);
   padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
-.mapcard { position: relative; height: min(62vh, 560px); border-radius: 16px; overflow: hidden; border: 1px solid var(--line); }
+/* Leaflet's panes use z-index 400–1000; isolate them so the map never paints over the top bar, tabs or sheets. */
+.mapcard { position: relative; isolation: isolate; z-index: 0; height: min(62vh, 560px); border-radius: 16px; overflow: hidden; border: 1px solid var(--line); }
+.mapwrap { isolation: isolate; }
+/* iOS Safari can paint the map's GPU layers over fixed elements regardless of z-index.
+   Hide the spots map while a form is open, and give fixed elements their own layers. */
+body.locked .mapcard { visibility: hidden; }
+.top, .nav, .sheet, .mapview { transform: translateZ(0); }
+/* Long-press adds a spot; stop the phone's own text-selection and link menus from firing too. */
+.mapbox { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 .mpin { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--pin-ring); font-family: var(--f-display); font-weight: 700; font-size: 1.05rem;
   border: 3px solid var(--pin-ring); box-shadow: 0 2px 6px rgba(0, 0, 0, .4); }
 .mpop { display: flex; flex-direction: column; gap: 6px; min-width: 170px; font-family: var(--f-body); font-size: .95rem; }
