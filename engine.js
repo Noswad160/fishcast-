@@ -636,4 +636,20 @@ function sceneOf(spot, cond, ms = Date.now()) {
   return { sky, wx };
 }
 
-if (typeof module !== "undefined") module.exports = { sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };
+// [top, middle, bottom] of the band for each sky and weather. Every stop keeps white text above 4.5:1 contrast.
+const DAY = {
+  clear: ["#1d6f86", "#17677a", "#0f5c56"], partly: ["#2d6878", "#1f5f6a", "#0f5652"], cloudy: ["#4b5d64", "#355a5c", "#1f4f4b"],
+  rain: ["#3b4b54", "#2c4b4f", "#1b4542"], fog: ["#526365", "#43595b", "#2f5452"], snow: ["#566c77", "#43636a", "#2a5458"], storm: ["#29333d", "#233a3e", "#163a37"],
+};
+const SKIES = {
+  dawn: { clear: ["#5e3a63", "#9c5140", "#0f5c56"], partly: ["#5d4466", "#8e5547", "#0f5652"] },
+  dusk: { clear: ["#33285a", "#8e4436", "#0c4a47"], partly: ["#3a3159", "#7d4a3e", "#0c4744"] },
+  night: { clear: ["#08142b", "#0a2236", "#0a3532"], partly: ["#0e1a2d", "#0f2633", "#0b3431"] },
+};
+const DIM = { dawn: 0.18, dusk: 0.3, night: 0.58 };
+const mixDark = (hex, amt) => "#" + [1, 3, 5].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - amt)).toString(16).padStart(2, "0")).join("");
+function skyStops({ sky, wx }) {
+  return (SKIES[sky] && SKIES[sky][wx]) || DAY[wx].map(c => sky === "day" ? c : mixDark(c, DIM[sky]));
+}
+
+if (typeof module !== "undefined") module.exports = { skyStops, sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };

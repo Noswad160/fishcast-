@@ -246,21 +246,9 @@ const titleCase = s => String(s).toLowerCase().replace(/\b\w/g, c => c.toUpperCa
 const ago = ms => { const m = Math.round((Date.now() - ms) / 60e3); return m < 2 ? "just now" : m < 60 ? m + " min ago" : m < 1440 ? Math.round(m / 60) + " h ago" : Math.round(m / 1440) + " days ago"; };
 
 /* ---------------------------------------------------------------- scene: the water band shows the sky at the spot */
-// [top, middle, bottom] of the band for each sky and weather. Every stop keeps white text above 4.5:1 contrast.
-const DAY = {
-  clear: ["#1d6f86", "#17677a", "#0f5c56"], partly: ["#2d6878", "#1f5f6a", "#0f5652"], cloudy: ["#4b5d64", "#355a5c", "#1f4f4b"],
-  rain: ["#3b4b54", "#2c4b4f", "#1b4542"], fog: ["#526365", "#43595b", "#2f5452"], snow: ["#566c77", "#43636a", "#2a5458"], storm: ["#29333d", "#233a3e", "#163a37"],
-};
-const SKIES = {
-  dawn: { clear: ["#5e3a63", "#9c5140", "#0f5c56"], partly: ["#5d4466", "#8e5547", "#0f5652"] },
-  dusk: { clear: ["#33285a", "#8e4436", "#0c4a47"], partly: ["#3a3159", "#7d4a3e", "#0c4744"] },
-  night: { clear: ["#08142b", "#0a2236", "#0a3532"], partly: ["#0e1a2d", "#0f2633", "#0b3431"] },
-};
-const DIM = { dawn: 0.18, dusk: 0.3, night: 0.58 };
-const mix = (hex, amt) => "#" + [1, 3, 5].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - amt)).toString(16).padStart(2, "0")).join("");
 function applyScene() {
   const spot = curSpot(), { sky, wx } = sceneOf(spot, cachedCond(spot.id));
-  const stops = (SKIES[sky] && SKIES[sky][wx]) || DAY[wx].map(c => sky === "day" ? c : mix(c, DIM[sky]));
+  const stops = skyStops({ sky, wx });
   const root = document.documentElement;
   if (root.dataset.sky === sky && root.dataset.wx === wx) return;
   root.dataset.sky = sky; root.dataset.wx = wx;
@@ -463,6 +451,9 @@ function renderSpots() {
       ${score == null ? `<span class="badge wait"><b>…</b></span>` : `<span class="badge" style="background:${scoreColor(score)}"><b>${score}</b><span>${scoreLabel(score)}</span></span>`}
       ${s.example ? "" : `<button class="iconbtn" data-act="editSpot" data-id="${esc(s.id)}" aria-label="Edit ${esc(s.name)}">${ICON_EDIT}</button>`}
     </div>`).join("")}</div>`;
+  if (own.length) html += `<section class="card" aria-label="Home screen widget"><h3>Home screen widget</h3>
+    <p class="small muted">See the bite score for a spot on your home screen or lock screen without opening the app.</p>
+    <div class="row"><button class="btn accent" data-act="widget" data-id="${esc(curSpot().id)}">Set up a widget</button></div></section>`;
   html += `<section class="card" aria-label="Backup"><h3>Backup</h3>
     <p class="small muted">Your spots and catches are saved only on this device. Save a backup now and then, or to move to a new phone.</p>
     <div class="row"><button class="btn ghost" data-act="export">Save backup</button><label class="btn ghost" for="importFile">Restore backup</label><input type="file" id="importFile" accept="application/json,.json" hidden></div></section>
@@ -588,6 +579,7 @@ function spotSheet(spot) {
       </div></details>
     <p id="formErr" class="small" style="color:var(--bad)" role="alert" hidden></p>
     <button class="btn big" type="submit">Save spot</button>
+    ${s.id ? `<button type="button" class="btn ghost" data-act="widget" data-id="${esc(s.id)}">Home screen widget for this spot</button>` : ""}
     ${s.id ? `<div id="delArea"><button type="button" class="linkbtn" data-act="askDelSpot" style="color:var(--bad)">Delete this spot</button></div>` : ""}
   </form>`);
   fillEnvBoxes(s.species || [], s.structures || []);
@@ -632,6 +624,39 @@ function manualSheet() {
     <div class="field"><span class="label">Weather trend</span><div class="chips">${[["falling", "Front coming"], ["steady", "Steady"], ["rising", "Clearing"], ["post-front", "Day after a cold front"]].map(([v, l]) => chip("radio", "mTrend", v, l, v === M.trend)).join("")}</div></div>
     <button class="btn big" type="submit">Update forecast</button>
   </form>`);
+}
+
+/* ---------------------------------------------------------------- home screen widget (runs in Scriptable) */
+let widgetScript = null;
+const spotCode = (s, sp) => `${s.lat},${s.lon} | ${String(s.name).replace(/\|/g, "/")} | ${s.water} | ${sp || speciesFor(s)[0] || ""}`;
+function widgetSheet(id) {
+  const all = ownSpots(), spot = all.find(s => s.id === id) || all[0];
+  if (!spot) { toast("Add a spot first."); return; }
+  const code = spotCode(spot, spot.id === curSpot().id ? curSpecies(spot) : null);
+  openSheet(`<div class="body"><h3 id="sheetTitle">Home screen widget</h3>
+    <p>iPhone widgets have to come from an App Store app, so Fishcast's widget runs inside <b>Scriptable</b>, a free app for widgets. It uses the same forecast as Fishcast.</p>
+    ${all.length > 1 ? `<div class="chips" role="group" aria-label="Spot">${all.map(s => `<button class="chip" data-act="widget" data-id="${esc(s.id)}" aria-pressed="${s.id === spot.id}">${esc(s.name)}</button>`).join("")}</div>` : ""}
+    <ol class="steps">
+      <li><b>Get Scriptable</b><span class="small">Free on the <a href="https://apps.apple.com/app/scriptable/id1405459188" target="_blank" rel="noopener">App Store</a>.</span></li>
+      <li><b>Add the Fishcast script</b> <span class="small muted">(once)</span><span class="small">Copy it, open Scriptable, tap <b>+</b>, paste, and name it <b>Fishcast</b>.</span>
+        <button type="button" class="btn sm" data-act="copyWidgetScript" id="copyScriptBtn" disabled>Loading script…</button></li>
+      <li><b>Add the widget</b><span class="small">Long-press your home screen, tap <b>+</b>, pick <b>Scriptable</b> and a size, then <b>Add Widget</b>. Long-press the new widget, tap <b>Edit Widget</b>, set <b>Script</b> to Fishcast, and paste this as the <b>Parameter</b>:</span>
+        <code class="spotcode" id="spotCode">${esc(code)}</code>
+        <button type="button" class="btn sm" data-act="copySpotCode">Copy spot code</button></li>
+    </ol>
+    <p class="small muted">It works on the lock screen too, and you can add one widget per spot. Tapping a widget opens Fishcast in Safari; iPhone doesn't let widgets open home-screen web apps directly.</p>
+    <textarea id="copyFallback" class="small" rows="4" readonly hidden></textarea></div>`);
+  const btn = () => $("#copyScriptBtn");
+  const ready = () => { if (btn()) { btn().disabled = false; btn().textContent = "Copy widget script"; } };
+  if (widgetScript) ready();
+  else fetch("widget/fishcast-widget.js").then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
+    .then(t => { widgetScript = t; ready(); })
+    .catch(() => { if (btn()) btn().textContent = "Needs a connection"; });
+}
+// Clipboard writes must happen right in the tap on iPhone; if refused, show the text to copy by hand.
+function copyText(text, what) {
+  const fallback = () => { const ta = $("#copyFallback"); if (!ta) return; ta.hidden = false; ta.value = text; ta.focus(); ta.select(); toast(`Select all and copy the ${what} below.`); };
+  try { navigator.clipboard.writeText(text).then(() => { buzz(); toast(`Copied the ${what}`); }, fallback); } catch (e) { fallback(); }
 }
 
 /* ---------------------------------------------------------------- backup */
@@ -731,6 +756,9 @@ document.addEventListener("click", async e => {
       <button class="btn big ghost" data-act="closeSheet">Got it</button></div>`); break;
     case "manual": manualSheet(); break;
     case "export": exportBackup(); break;
+    case "widget": widgetSheet(id); break;
+    case "copyWidgetScript": if (widgetScript) copyText(widgetScript, "widget script"); break;
+    case "copySpotCode": copyText($("#spotCode").textContent, "spot code"); break;
     case "step": {
       const inp = $("#" + b.dataset.for), v = (Number(inp.value) || 0) + Number(b.dataset.d), min = Number(inp.min);
       inp.value = String(Math.max(isNaN(min) ? -Infinity : min, Math.round(v * 100) / 100)); buzz(); break;

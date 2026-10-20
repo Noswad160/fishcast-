@@ -428,3 +428,11 @@ main { padding-block: 0 104px; }
 @keyframes snow { to { background-position: 30px 160px; } }
 @keyframes fog { to { background-position: 100% 0, 0 0; } }
 @keyframes twinkle { to { opacity: .45; } }
+
+/* widget setup */
+.steps { margin: 0; padding: 0; list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: 18px; }
+.steps li { position: relative; counter-increment: step; padding-left: 42px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.steps li::before { content: counter(step); position: absolute; left: 0; top: -2px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent); color: var(--accent-ink); font-family: var(--f-display); font-weight: 700; font-size: 1rem; }
+.spotcode { font-family: var(--f-mono); font-size: .85rem; background: var(--water-soft); color: var(--ink); border-radius: 8px; padding: 8px 10px; word-break: break-all; user-select: all; -webkit-user-select: all; }
+#copyFallback { width: 100%; font-family: var(--f-mono); }
