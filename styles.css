@@ -1,49 +1,60 @@
 /* Layout: phone-first app shell. Sticky top bar (spot + refresh), scrolling content, fixed bottom tab bar,
    floating catch button, and bottom sheets for every form. */
 :root {
-  --bg: #edf1ef;
-  --surface: #fbfcfb;
+  /* Light: misty morning on the lake. The band is the icon's deep teal water; orange and white are the bobber. */
+  --bg: #edf4f2;
+  --surface: #ffffff;
   --raised: #ffffff;
-  --ink: #14201d;
-  --muted: #586a65;
-  --line: #d2dcd8;
-  --water: #13605b;
-  --water-soft: #d9ebe8;
-  --accent: #d9560b;
+  --ink: #10221f;
+  --muted: #5a6d68;
+  --line: #d6e2de;
+  --water: #12615b;
+  --water-soft: #dbeeea;
+  --band: #0f5c56;
+  --band-deep: #0a4541;
+  --band-ink: #ffffff;
+  --band-muted: rgba(255, 255, 255, .74);
+  --band-soft: rgba(255, 255, 255, .14);
+  --accent: #e4560a;
   --accent-ink: #ffffff;
-  --accent-soft: #fbe6d8;
+  --accent-soft: #fde7d8;
+  --foam: #ffffff;
   --good: #2e7d3c;
   --warn: #a87100;
   --bad: #b03636;
-  --s1: #b9c7c3;
-  --s2: #d8b04a;
-  --s3: #2f8f86;
-  --s4: #d9560b;
-  --scrim: rgba(10, 20, 18, .45);
+  --s1: #b6c6c1;
+  --s2: #d9ad3f;
+  --s3: #2c958b;
+  --s4: #e4560a;
+  --scrim: rgba(6, 26, 24, .5);
   --pin-ring: #ffffff; /* white ring reads on satellite imagery in both themes */
-  --shadow: 0 6px 24px rgba(10, 30, 25, .16);
+  --shadow: 0 8px 28px rgba(8, 40, 36, .18);
+  --card-shadow: 0 1px 2px rgba(8, 40, 36, .05), 0 6px 20px rgba(8, 40, 36, .07);
+  --card-border: transparent;
   --f-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
   --f-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
   --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
-  --nav-h: 62px;
+  --nav-h: 64px;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0c1614; --surface: #13201d; --raised: #182825; --ink: #e2ebe8; --muted: #93a6a0; --line: #24362f;
-    --water: #59b8ae; --water-soft: #173431; --accent: #ff7f3a; --accent-ink: #1a0d05; --accent-soft: #3a2316;
+    --bg: #061514; --surface: #0e2321; --raised: #122b28; --ink: #e4efec; --muted: #8fa7a1; --line: #1c3633;
+    --water: #5cc3b7; --water-soft: #123330; --band: #0b3b37; --band-deep: #072a27; --band-ink: #f1faf8; --band-muted: rgba(241, 250, 248, .7); --band-soft: rgba(255, 255, 255, .1);
+    --accent: #ff7a30; --accent-ink: #1c0c02; --accent-soft: #3b2114; --foam: #f4f1ea;
     --good: #6cc77a; --warn: #e0b04a; --bad: #ef7b7b;
-    --s1: #3a4c47; --s2: #b8963a; --s3: #3fa79c; --s4: #ff7f3a;
-    --scrim: rgba(0, 0, 0, .6); --shadow: 0 6px 24px rgba(0, 0, 0, .5);
+    --s1: #36504b; --s2: #c49b3c; --s3: #3aa99d; --s4: #ff7a30;
+    --scrim: rgba(0, 0, 0, .62); --shadow: 0 8px 28px rgba(0, 0, 0, .55); --card-shadow: none; --card-border: #1c3633;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0c1614; --surface: #13201d; --raised: #182825; --ink: #e2ebe8; --muted: #93a6a0; --line: #24362f;
-  --water: #59b8ae; --water-soft: #173431; --accent: #ff7f3a; --accent-ink: #1a0d05; --accent-soft: #3a2316;
+  --bg: #061514; --surface: #0e2321; --raised: #122b28; --ink: #e4efec; --muted: #8fa7a1; --line: #1c3633;
+  --water: #5cc3b7; --water-soft: #123330; --band: #0b3b37; --band-deep: #072a27; --band-ink: #f1faf8; --band-muted: rgba(241, 250, 248, .7); --band-soft: rgba(255, 255, 255, .1);
+  --accent: #ff7a30; --accent-ink: #1c0c02; --accent-soft: #3b2114; --foam: #f4f1ea;
   --good: #6cc77a; --warn: #e0b04a; --bad: #ef7b7b;
-  --s1: #3a4c47; --s2: #b8963a; --s3: #3fa79c; --s4: #ff7f3a;
-  --scrim: rgba(0, 0, 0, .6); --shadow: 0 6px 24px rgba(0, 0, 0, .5);
+  --s1: #36504b; --s2: #c49b3c; --s3: #3aa99d; --s4: #ff7a30;
+  --scrim: rgba(0, 0, 0, .62); --shadow: 0 8px 28px rgba(0, 0, 0, .55); --card-shadow: none; --card-border: #1c3633;
   color-scheme: dark;
 }
 
@@ -292,3 +303,77 @@ body.locked .mapcard { visibility: hidden; }
 .rc .track { height: 10px; background: var(--water-soft); border-radius: 5px; overflow: hidden; }
 .rc .fill { display: block; height: 100%; }
 input[type="datetime-local"] { font: inherit; color: inherit; background: var(--raised); border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; width: 100%; min-width: 0; min-height: 46px; }
+
+/* ================================================================ brand layer: water band, bobber, softer cards */
+main { padding-block: 0 104px; }
+.top { background: var(--band); border-bottom: 0; color: var(--band-ink); }
+.top .label, .spotbtn .label { color: var(--band-muted); }
+.spotbtn { color: var(--band-ink); }
+.spotbtn b { font-size: 1.45rem; letter-spacing: .01em; }
+.spotbtn b::after { color: var(--band-muted); }
+.top .iconbtn { color: var(--band-ink); }
+.top .iconbtn:active { background: var(--band-soft); }
+.logo { width: 34px; height: 34px; }
+
+/* The band continues from the top bar and ends in a wave, like the bottom of the icon. */
+.waterband { position: relative; background: var(--band); color: var(--band-ink); display: flex; flex-direction: column; gap: 14px;
+  margin-inline: calc(-1 * max(16px, env(safe-area-inset-left, 0px))); padding: 6px max(16px, env(safe-area-inset-right, 0px)) 18px max(16px, env(safe-area-inset-left, 0px)); margin-bottom: 14px; }
+.waterband .wave { position: absolute; left: 0; right: 0; bottom: -15px; width: 100%; height: 16px; display: block; }
+.waterband h2 { color: var(--band-ink); font-size: 1.9rem; }
+.waterband .muted, .waterband .label { color: var(--band-muted); }
+.waterband .chip { background: var(--band-soft); border-color: transparent; color: var(--band-ink); }
+.waterband .chip[aria-pressed="true"] { background: var(--foam); color: var(--band); border-color: var(--foam); }
+.waterband .chipbar { padding-block: 4px 0; margin-inline: calc(-1 * max(16px, env(safe-area-inset-left, 0px))); padding-inline: max(16px, env(safe-area-inset-left, 0px)); }
+.waterband .btn { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.waterband .btn.ghost { background: transparent; border-color: var(--band-muted); color: var(--band-ink); }
+.waterband .linkbtn { color: var(--band-ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--band-muted); }
+.waterband .skeleton { background: linear-gradient(90deg, var(--band-soft), rgba(255, 255, 255, .22), var(--band-soft)); background-size: 200% 100%; }
+.waterband .banner.welcome { background: var(--foam); color: var(--band); }
+.waterband .banner.welcome .label { color: var(--band); opacity: .8; }
+
+/* Score hero: the bobber rides high on a slow bite and gets pulled under on a hot one. */
+.hero { grid-template-columns: 124px 1fr; gap: 10px; align-items: center; }
+.bobber { width: 124px; height: 124px; display: block; overflow: visible; }
+.bobber .float { transform-box: fill-box; }
+@media (prefers-reduced-motion: no-preference) {
+  .bobber .float { animation: bob 3.2s ease-in-out infinite; }
+  .bobber .ripple { animation: ripple 3.2s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+}
+@keyframes bob { 50% { transform: translateY(3px); } }
+@keyframes ripple { 0% { transform: scale(.7); opacity: .55; } 100% { transform: scale(1.25); opacity: 0; } }
+.scorebox { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.scorebox .big { font-family: var(--f-display); font-weight: 700; font-size: 3.6rem; line-height: .9; font-variant-numeric: tabular-nums; }
+.scorebox .pill { align-self: flex-start; font-family: var(--f-display); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; font-size: .85rem;
+  padding: 2px 10px; border-radius: 999px; background: var(--foam); }
+.waterband .headline { font-size: 1.15rem; line-height: 1.35; font-weight: 600; color: var(--band-ink); }
+.waterband .factor { border-color: transparent; background: var(--band-soft); color: var(--band-ink); }
+.waterband .factor.up::first-letter, .waterband .factor.down::first-letter { font-weight: 700; }
+.waterband .factor.up { box-shadow: inset 3px 0 0 #8fe39c; }
+.waterband .factor.down { box-shadow: inset 3px 0 0 #ff9d8f; }
+.waterband .win { background: var(--foam); border: 0; color: var(--band); box-shadow: 0 2px 8px rgba(0, 0, 0, .12); }
+.waterband .win .muted { color: var(--band); opacity: .75; }
+.waterband .win.now { box-shadow: inset 0 0 0 2px var(--accent); }
+
+/* Cards: rounded, soft-shadowed in daylight, outlined at night. */
+.card, .item, .tile, .tripbar, .banner { border-color: var(--card-border); box-shadow: var(--card-shadow); }
+.card { border-radius: 20px; padding: 18px; }
+.item, .tripbar, .banner { border-radius: 16px; }
+.card h3 { font-size: 1.35rem; text-transform: uppercase; letter-spacing: .02em; }
+.tripbar.on { border-color: var(--accent); }
+.tile { border-radius: 16px; padding: 12px; gap: 3px; }
+.tile.flag { border-color: var(--warn); }
+.tile .ic { width: 22px; height: 22px; color: var(--water); margin-bottom: 2px; }
+.tile .v { font-family: var(--f-display); font-weight: 600; font-size: 1.35rem; line-height: 1.1; }
+.tiles { gap: 10px; }
+
+/* Bottom bar: the active tab gets the bobber's orange and a float marker. */
+.nav { border-top: 0; box-shadow: 0 -1px 0 var(--line), 0 -6px 18px rgba(8, 40, 36, .06); }
+.navbtn { position: relative; }
+.navbtn[aria-current="page"] { color: var(--accent); }
+.navbtn[aria-current="page"]::before { content: ""; position: absolute; top: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.navbtn svg { margin-top: 6px; }
+.fab { box-shadow: 0 8px 20px rgba(228, 86, 10, .35); border: 3px solid var(--surface); }
+.btn { border-radius: 12px; }
+.btn.accent { box-shadow: 0 4px 12px rgba(228, 86, 10, .25); }
+.panel { border-radius: 24px 24px 0 0; }
+.panel h3 { font-size: 1.5rem; text-transform: uppercase; }

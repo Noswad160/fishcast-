@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Fishcast</title>
 <meta name="description" content="Fishing forecast with tips for each spot, species and set of conditions, plus a catch log that learns what works where you fish.">
-<meta name="theme-color" content="#fbfcfb" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#13201d" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#0f5c56" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b3b37" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Fishcast">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -22,7 +22,7 @@
 <body>
 <header class="top">
   <div class="wrap">
-    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--water)"/><circle cx="16" cy="18" r="8" fill="var(--accent)"/><path d="M8 18h16" stroke="var(--surface)" stroke-width="2.4"/><path d="M16 4v6" stroke="var(--surface)" stroke-width="2"/></svg>
+    <svg class="logo" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="var(--band-deep)"/><path d="M0 360c60-22 120-22 180 0s120 22 180 0 100-22 152-8v160H0z" fill="var(--band)"/><path d="M256 64v118" stroke="var(--foam)" stroke-width="18" stroke-linecap="round"/><circle cx="256" cy="282" r="110" fill="var(--accent)"/><path d="M146 282a110 110 0 0 0 220 0z" fill="var(--foam)"/></svg>
     <button class="spotbtn" id="spotBtn" data-act="pickSpot" aria-label="Change spot"><span class="label">Fishing at</span><b id="spotName">…</b></button>
     <button class="iconbtn" id="refreshBtn" data-act="refresh" aria-label="Refresh conditions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg></button>
   </div>

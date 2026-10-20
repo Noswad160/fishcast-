@@ -269,9 +269,41 @@ function revealSelectedChip() {
   else if (right + pad > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = right + pad - bar.clientWidth;
 }
 
-function dialSvg(score) {
-  const r = 44, c = 2 * Math.PI * r, off = c * (1 - score / 100);
-  return `<svg viewBox="0 0 104 104" aria-hidden="true"><circle cx="52" cy="52" r="${r}" fill="none" stroke="var(--line)" stroke-width="9"/><circle class="arc" cx="52" cy="52" r="${r}" fill="none" stroke="${scoreColor(score)}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/></svg>`;
+// The icon's bobber at the waterline. The higher the score, the further it's pulled under.
+function bobberSvg(score) {
+  const r = 30, cx = 62, water = 84, cy = Math.round(42 + Math.min(99, Math.max(1, score)) * 0.4);
+  return `<svg class="bobber" viewBox="0 0 124 124" role="img" aria-label="Bite score ${score} out of 100">
+    <ellipse class="ripple" cx="${cx}" cy="${water}" rx="46" ry="7" fill="none" stroke="var(--band-ink)" stroke-opacity=".35" stroke-width="1.5"/>
+    <g class="float">
+      <path d="M${cx} ${cy - r - 20}v20" stroke="var(--band-ink)" stroke-width="4" stroke-linecap="round"/>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="var(--foam)"/>
+      <path d="M${cx - r} ${cy}a${r} ${r} 0 0 1 ${2 * r} 0z" fill="var(--accent)"/>
+      <path d="M${cx - r} ${cy}h${2 * r}" stroke="var(--band-deep)" stroke-opacity=".25" stroke-width="2"/>
+    </g>
+    <rect x="0" y="${water}" width="124" height="${124 - water}" fill="var(--band)" fill-opacity=".86"/>
+    <path d="M0 ${water}q15.5 -5 31 0t31 0t31 0t31 0" fill="none" stroke="var(--band-ink)" stroke-opacity=".55" stroke-width="2"/>
+  </svg>`;
+}
+const WAVE = `<svg class="wave" viewBox="0 0 400 16" preserveAspectRatio="none" aria-hidden="true"><path d="M0 0h400v6c-25 0-25 9-50 9s-25-9-50-9-25 9-50 9-25-9-50-9-25 9-50 9-25-9-50-9-25 9-50 9-25-9-50-9z" fill="var(--band)"/></svg>`;
+const waterband = inner => `<section class="waterband">${inner}${WAVE}</section>`;
+const ic = (body, extra = "") => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${extra}>${body}</svg>`;
+const ICONS = {
+  thermo: ic('<path d="M10 14V5a2 2 0 1 1 4 0v9a4 4 0 1 1-4 0z"/><path d="M12 9v7"/><path d="M3 20c2 0 2-1.5 4-1.5S9 20 11 20" opacity=".6"/>'),
+  sunny: ic('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
+  partly: ic('<path d="M8 3v1.5M3.5 8H5M4.8 4.8l1 1M12.2 4.8l-1 1"/><path d="M5.6 10.5A3.5 3.5 0 1 1 11.6 7"/><path d="M8 20h9a4 4 0 0 0 0-8 5 5 0 0 0-9.6 1.5A3.3 3.3 0 0 0 8 20z"/>'),
+  overcast: ic('<path d="M7 19h10a4.5 4.5 0 0 0 .4-9 6 6 0 0 0-11.6 1.6A3.8 3.8 0 0 0 7 19z"/>'),
+  rain: ic('<path d="M7 15h10a4 4 0 0 0 .4-8 6 6 0 0 0-11.6 1.6A3.3 3.3 0 0 0 7 15z"/><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3"/>'),
+  sunrise: ic('<path d="M4 18h16M7 14a5 5 0 0 1 10 0"/><path d="M12 3v5M9.5 5.5 12 3l2.5 2.5"/><path d="M3 21h18" opacity=".6"/>'),
+};
+// Arrow points the way the wind is blowing (it comes FROM the compass direction).
+const windIcon = deg => ic('<path d="M12 4v15M7 14l5 5 5-5"/>', ` style="transform:rotate(${Math.round(deg)}deg)"`);
+const gaugeIcon = trend => { const a = trend <= -0.03 ? -50 : trend >= 0.03 ? 50 : 0;
+  return ic(`<path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 17l${(Math.sin(a * Math.PI / 180) * 6).toFixed(1)} ${(-Math.cos(a * Math.PI / 180) * 6).toFixed(1)}"/><circle cx="12" cy="17" r="1.2" fill="currentColor"/>`); };
+// The moon as it looks tonight: lit side on the right while waxing, on the left while waning.
+function moonIcon(phase, fraction) {
+  const r = 8, waxing = phase < 0.5, rx = Math.abs(2 * fraction - 1) * r;
+  const lit = `M12 ${12 - r}A${r} ${r} 0 0 ${waxing ? 1 : 0} 12 ${12 + r}A${rx.toFixed(2)} ${r} 0 0 ${waxing === fraction > 0.5 ? 1 : 0} 12 ${12 - r}z`;
+  return `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="${r}" fill="currentColor" fill-opacity=".18" stroke="currentColor" stroke-width="1.5"/><path d="${lit}" fill="currentColor"/></svg>`;
 }
 function chartSvg(ctx) {
   const data = ctx.future, n = data.length, W = 10, gap = 2, top = 18, H = 100, base = top + H, w = n * (W + gap) + 30;
@@ -294,42 +326,37 @@ function renderToday() {
   const spot = curSpot(), cond = cachedCond(spot.id);
   refreshCurrent(false);
   const list = speciesFor(spot), spId = curSpecies(spot);
-  let html = "";
-  if (!ownSpots().length) html += `<section class="banner welcome"><div><span class="label">Welcome to Fishcast</span><b>Set up your own spot in about 30 seconds.</b><span class="small">Until then you're looking at an example lake and example catches.</span><div class="row"><button class="btn" data-act="newSpot">Add my spot</button></div></div></section>`;
-  if (list.length > 1) html += `<div class="chipbar" role="group" aria-label="Target species">${list.map(k => `<button class="chip" data-act="species" data-id="${k}" aria-pressed="${k === spId}">${esc(SPECIES[k].name)}</button>`).join("")}</div>`;
-  html += tripBar(spot);
-  if (!cond) { view.innerHTML = html + `<div class="skeleton" aria-label="Loading conditions"></div><div class="skeleton" style="height:90px"></div>`; return; }
+  let band = "";
+  if (!ownSpots().length) band += `<section class="banner welcome"><div><span class="label">Welcome to Fishcast</span><b>Set up your own spot in about 30 seconds.</b><span class="small">Until then you're looking at an example lake and example catches.</span><div class="row"><button class="btn" data-act="newSpot">Add my spot</button></div></div></section>`;
+  if (list.length > 1) band += `<div class="chipbar" role="group" aria-label="Target species">${list.map(k => `<button class="chip" data-act="species" data-id="${k}" aria-pressed="${k === spId}">${esc(SPECIES[k].name)}</button>`).join("")}</div>`;
+  if (!cond) { view.innerHTML = waterband(band + `<div class="skeleton" aria-label="Loading conditions"></div>`) + tripBar(spot); return; }
 
   const ctx = buildCtx(spot, cond, spId), { h, sp, tz, astro, water } = ctx, now = ctx.now, err = S.errors[spot.id];
+  const wins = bestWindows(ctx.future);
+  const ups = now.factors.filter(f => f.v > 0).sort((a, b) => b.v - a.v), downs = now.factors.filter(f => f.v < 0).sort((a, b) => a.v - b.v);
+  band += `<div class="hero" aria-label="Bite outlook">
+      ${bobberSvg(now.score)}
+      <div class="scorebox"><span class="label">${esc(ctx.phase.name)} · ${water.v}°F water</span>
+        <span class="big">${now.score}</span><span class="pill" style="color:${scoreColor(now.score)}">${scoreLabel(now.score)} bite</span></div>
+    </div>
+    <p class="headline">${esc(headline(ctx))}</p>
+    <div class="factors">${ups.map(f => `<span class="factor up">+${f.v} ${esc(f.label)}</span>`).join("")}${downs.map(f => `<span class="factor down">${f.v} ${esc(f.label)}</span>`).join("")}</div>
+    <button class="linkbtn small" data-act="howScore" style="padding:0;align-self:flex-start">How is this scored?</button>
+    <span class="label">Best times, next 48 hours</span>
+    <div class="hscroll">${wins.map(w => { const on = w.start <= Date.now() && w.end > Date.now(); return `<div class="win${on ? " now" : ""}"><span class="small muted">${on ? "Now" : (d => d.charAt(0).toUpperCase() + d.slice(1))(dayWord(w.start, tz))}</span><b>${fmtRange(w.start, w.end, tz)}</b><span class="small" style="color:${scoreColor(w.avg)}">${scoreLabel(w.avg)} · ${w.avg}</span></div>`; }).join("")}</div>`;
+  let html = waterband(band) + tripBar(spot);
   if (cond.mode === "manual") html += `<section class="banner warn"><div><b>${esc(err || "Live weather isn't loaded.")} Showing conditions you entered.</b><div class="row"><button class="btn sm" data-act="manual">Edit conditions</button><button class="btn sm ghost" data-act="refresh">Try again</button></div></div></section>`;
   else if (!isFresh(cond) && !S.loading[spot.id]) html += `<section class="banner info"><div><span class="small">${err ? esc(err) + " " : ""}Forecast from ${ago(cond.fetchedAt)}.</span></div></section>`;
 
-  const wins = bestWindows(ctx.future);
-  const ups = now.factors.filter(f => f.v > 0).sort((a, b) => b.v - a.v), downs = now.factors.filter(f => f.v < 0).sort((a, b) => a.v - b.v);
-  html += `<section class="card" aria-label="Bite outlook">
-    <div class="hero">
-      <div class="dial">${dialSvg(now.score)}<div class="num"><b>${now.score}</b><span style="color:${scoreColor(now.score)}">${scoreLabel(now.score)}</span></div></div>
-      <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
-        <span class="label">${esc(ctx.phase.name)} · ${water.v}°F water</span>
-        <p class="headline">${esc(headline(ctx))}</p>
-      </div>
-    </div>
-    <button class="linkbtn small" data-act="howScore" style="padding:0">How is this scored?</button>
-    <div class="factors">${ups.map(f => `<span class="factor up">+${f.v} ${esc(f.label)}</span>`).join("")}${downs.map(f => `<span class="factor down">${f.v} ${esc(f.label)}</span>`).join("")}</div>
-    <span class="label">Best times, next 48 hours</span>
-    <div class="hscroll">${wins.map(w => { const on = w.start <= Date.now() && w.end > Date.now(); return `<div class="win${on ? " now" : ""}"><span class="small muted">${on ? "Now" : (d => d.charAt(0).toUpperCase() + d.slice(1))(dayWord(w.start, tz))}</span><b>${fmtRange(w.start, w.end, tz)}</b><span class="small" style="color:${scoreColor(w.avg)}">${scoreLabel(w.avg)} · ${w.avg}</span></div>`; }).join("")}</div>
-  </section>`;
-
   const sunrise = astro.sunrise.find(t => t > Date.now() - 12 * hourMs), sunset = astro.sunset.find(t => t > Date.now() - 2 * hourMs), moon = moonIllum(Date.now());
-  const est = water.src === "estimate", salt = ctx.env === "salt", tide = tideOf(spot);
-  const trendArrow = h.trend3 <= -0.03 ? "↓" : h.trend3 >= 0.03 ? "↑" : "→";
+  const est = water.src === "estimate", salt = ctx.env === "salt", tide = tideOf(spot), sky = skyCat(h);
   html += `<section class="tiles" aria-label="Conditions">
-    <button class="tile${est ? " flag" : ""}" data-act="reading"><span class="label">Water</span><span class="v">${water.v}°F</span><span class="s">${est ? "tap to set" : esc(water.src)}</span></button>
-    <div class="tile"><span class="label">Air</span><span class="v">${Math.round(h.air)}°F</span><span class="s">${LABELS.sky[skyCat(h)].toLowerCase()}</span></div>
-    <div class="tile"><span class="label">Wind</span><span class="v">${Math.round(h.wind)} ${compass(h.dir)}</span><span class="s">mph · gusts ${Math.round(h.gust)}</span></div>
-    <div class="tile"><span class="label">Pressure</span><span class="v">${cond.mode === "manual" ? "" : h.pres.toFixed(2) + " "}${trendArrow}</span><span class="s">${trendCat(h)}</span></div>
-    <div class="tile"><span class="label">Sun</span><span class="v">${sunrise ? fmtTime(sunrise, tz) : "—"}</span><span class="s">sets ${sunset ? fmtTime(sunset, tz) : "—"}</span></div>
-    <div class="tile"><span class="label">Moon</span><span class="v">${Math.round(moon.fraction * 100)}%</span><span class="s">${moonPhaseName(moon.phase)}</span></div>
+    <button class="tile${est ? " flag" : ""}" data-act="reading">${ICONS.thermo}<span class="label">Water</span><span class="v">${water.v}°F</span><span class="s">${est ? "tap to set" : esc(water.src)}</span></button>
+    <div class="tile">${ICONS[sky]}<span class="label">Air</span><span class="v">${Math.round(h.air)}°F</span><span class="s">${LABELS.sky[sky].toLowerCase()}</span></div>
+    <div class="tile">${windIcon(h.dir)}<span class="label">Wind</span><span class="v">${Math.round(h.wind)} ${compass(h.dir)}</span><span class="s">mph · gusts ${Math.round(h.gust)}</span></div>
+    <div class="tile">${gaugeIcon(h.trend3)}<span class="label">Pressure</span><span class="v">${cond.mode === "manual" ? LABELS.trend[trendCat(h)] : h.pres.toFixed(2)}</span><span class="s">${cond.mode === "manual" ? "you entered" : (LABELS.trend[trendCat(h)] || "").toLowerCase()}</span></div>
+    <div class="tile">${ICONS.sunrise}<span class="label">Sunrise</span><span class="v">${sunrise ? fmtTime(sunrise, tz) : "—"}</span><span class="s">sets ${sunset ? fmtTime(sunset, tz) : "—"}</span></div>
+    <div class="tile">${moonIcon(moon.phase, moon.fraction)}<span class="label">Moon</span><span class="v">${Math.round(moon.fraction * 100)}%</span><span class="s">${moonPhaseName(moon.phase)}</span></div>
     ${salt ? `<button class="tile${tide ? "" : " flag"}" data-act="reading"><span class="label">Tide</span><span class="v">${tide ? { rising: "Incoming", falling: "Outgoing", slack: "Slack" }[tide] : "Not set"}</span><span class="s">tap to ${tide ? "change" : "set"}</span></button>` : ""}
     ${salt && ctx.wave != null ? `<div class="tile"><span class="label">Waves</span><span class="v">${ctx.wave.toFixed(1)} ft</span><span class="s">forecast</span></div>` : ""}
   </section>`;
@@ -389,8 +416,8 @@ function renderSpots() {
   const best = list.length > 1 && list[0].score != null && list[0].score > (list[1].score ?? -1) ? list[0].s.id : null;
   // The map keeps its own state; later renders (forecasts arriving) only refresh its pins.
   if (S.spotsMode === "map" && view.dataset.screen === "spotsmap" && spotsMap && $("#spotsMap")) { updateSpotMarkers(false); warmSpots(); return; }
-  let html = `<div class="row" style="justify-content:space-between"><h2>Your spots</h2><button class="btn" data-act="newSpot">${ICON_PIN}Add spot</button></div>
-    <div class="chips" role="group" aria-label="Show spots as">${[["list", "List"], ["map", "Map"]].map(([k, l]) => `<button class="chip" data-act="spotsMode" data-id="${k}" aria-pressed="${S.spotsMode === k}">${l}</button>`).join("")}</div>`;
+  let html = waterband(`<div class="row" style="justify-content:space-between"><h2>Your spots</h2><button class="btn" data-act="newSpot">${ICON_PIN}Add spot</button></div>
+    <div class="chips" role="group" aria-label="Show spots as">${[["list", "List"], ["map", "Map"]].map(([k, l]) => `<button class="chip" data-act="spotsMode" data-id="${k}" aria-pressed="${S.spotsMode === k}">${l}</button>`).join("")}</div>`);
   if (!own.length) html += `<p class="empty">You haven't added a spot yet. Add the places you fish, and Fishcast ranks them by how good the bite is right now.</p>`;
   if (S.spotsMode === "map") {
     view.innerHTML = html + `<div class="mapcard"><div id="spotsMap" class="mapbox" aria-label="Map of your spots"></div><button type="button" class="btn sm maplayer" data-act="mapLayer">${layerPref() === "satellite" ? "Map view" : "Satellite"}</button></div>
@@ -421,7 +448,7 @@ function renderLog() {
   const here = entries().filter(e => e.spotId === spot.id).sort((a, b) => b.t - a.t);
   const catches = here.filter(e => e.count > 0), blanks = here.filter(e => !e.count);
   const myTrips = trips().filter(t => t.spotId === spot.id);
-  let html = `<div class="row" style="justify-content:space-between"><h2>Catches at ${esc(spot.name)}</h2>${spot.example ? '<span class="example">Example</span>' : ""}</div>`;
+  let html = waterband(`<span class="label">Catches at</span><div class="row" style="justify-content:space-between;margin-top:-10px"><h2>${esc(spot.name)}</h2>${spot.example ? '<span class="example">Example</span>' : ""}</div>`);
   html += tripBar(spot);
   if (!spot.example) html += reportCardHtml(reportCard(myTrips, Store.list("catch").filter(c => c.spotId === spot.id)));
   if (!here.length && !myTrips.length) html += `<section class="card"><p>Nothing logged at ${esc(spot.name)} yet.</p><p class="small muted">Tap <b>Start trip</b> when you get to the water and <b>＋ Catch</b> when you land a fish. Times and conditions are saved automatically.</p></section>`;
