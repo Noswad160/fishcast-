@@ -125,6 +125,7 @@ function tally(list, key) {
   for (const e of list) { const k = typeof key === "function" ? key(e) : e[key]; if (!k) continue; m.set(k, (m.get(k) || 0) + (e.count || 1)); }
   return [...m.entries()].sort((a, b) => b[1] - a[1]);
 }
+const titleCase = s => String(s).toLowerCase().replace(/\b\w/g, c => c.toUpperCase()).replace(/, (\w\w)\.?$/, (m, st) => ", " + st.toUpperCase());
 const ago = ms => { const m = Math.round((Date.now() - ms) / 60e3); return m < 2 ? "just now" : m < 60 ? m + " min ago" : m < 1440 ? Math.round(m / 60) + " h ago" : Math.round(m / 1440) + " days ago"; };
 
 /* ---------------------------------------------------------------- render */
@@ -373,11 +374,17 @@ const checked = name => $$(`input[name="${name}"]:checked`).map(x => x.value);
 
 function readingSheet() {
   const spot = curSpot(), cond = cachedCond(spot.id), salt = envOf(spot) === "salt";
-  const w = cond ? waterOf(spot, cond) : { v: 60, src: "estimate" }, tide = tideOf(spot);
+  const w = cond ? waterOf(spot, cond) : { v: 60, src: "estimate" }, tide = tideOf(spot), g = cond && cond.gauge, tz = cond ? cond.tz : deviceTz();
+  const gaugeHtml = g ? `<div class="field"><span class="label">Nearest USGS gauge</span>
+      <p class="small"><b>${esc(titleCase(g.name))}</b>, ${Math.round(g.dist)} mi away: ${g.f}°F at ${fmtTime(g.at, tz)}${g.spanH >= 36 ? `, ${g.change >= 0 ? "up" : "down"} ${Math.abs(g.change)}°F in ${Math.round(g.spanH / 24)} days` : ""}.</p>
+      <div class="chips">${chip("radio", "rdGauge", "auto", "Use it here", spot.gauge !== "off")}${chip("radio", "rdGauge", "off", "Don't use it here", spot.gauge === "off")}</div>
+      <span class="small muted">A river gauge can read a few degrees off from a lake. Your own reading always comes first.</span></div>`
+    : !salt && cond && cond.mode === "live" ? `<p class="small muted">No USGS water-temperature gauge within 20 miles has reported in the last day, so Fishcast estimates it from air temperatures.</p>` : "";
   openSheet(`<form id="readingForm" novalidate>
     <h3 id="sheetTitle">What you see on the water</h3>
-    <div class="field"><span class="label">Water temperature (°F)</span>${stepper("rdWater", w.v, 1, 32)}
-      <span class="small muted">${w.src === "estimate" ? "Fishcast is estimating this from air temperatures. A real reading makes the tips much better." : "Used for the next 3 days."}</span></div>
+    <div class="field"><span class="label">Your water temperature reading (°F)</span>${stepper("rdWater", w.v, 1, 32)}
+      <span class="small muted">${w.src === "estimate" ? "Fishcast is estimating this from air temperatures. A thermometer reading makes the tips much better." : w.gauge ? "Leave it as is to keep using the gauge. A reading you enter is used for 3 days." : "Used for 3 days."}</span></div>
+    ${gaugeHtml}
     <div class="field"><span class="label">Clarity</span><div class="chips">${["clear", "stained", "muddy"].map(c => chip("radio", "rdClarity", c, c, c === clarityOf(spot))).join("")}</div></div>
     ${salt ? `<div class="field"><span class="label">Tide right now</span><div class="chips">${[["rising", "Incoming"], ["falling", "Outgoing"], ["slack", "Slack"], ["", "Not sure"]].map(([v, l]) => chip("radio", "rdTide", v, l, v === tide)).join("")}</div>
       <span class="small muted">Applies for 3 hours. Look it up on the <a href="https://tidesandcurrents.noaa.gov/map/" target="_blank" rel="noopener">NOAA tide map</a>.</span></div>` : ""}
@@ -540,9 +547,12 @@ document.addEventListener("submit", e => {
     const eid = uid("catch"); Store.put(eid, entry); closeSheet(); buzz(); render();
     toast(entry.count ? "Catch saved" : "Trip saved", { label: "Undo", fn: () => { Store.del(eid); render(); } });
   } else if (f.id === "readingForm") {
-    const r = { ...(spot.reading || {}), at: Date.now(), water: Number($("#rdWater").value), clarity: $('input[name="rdClarity"]:checked')?.value || spot.clarity };
+    const r = { ...(spot.reading || {}), at: Date.now(), clarity: $('input[name="rdClarity"]:checked')?.value || spot.clarity }, inp = $("#rdWater");
+    // Only a changed number counts as a thermometer reading; otherwise keep the gauge or estimate.
+    if (Number(inp.value) !== Number(inp.defaultValue)) { r.water = Number(inp.value); r.waterAt = Date.now(); }
     if ($('input[name="rdTide"]')) { r.tide = $('input[name="rdTide"]:checked')?.value || ""; r.tideAt = Date.now(); }
-    if (spot.example) EXAMPLE_SPOT.reading = r; else Store.put(spot.id, { ...spot, reading: r });
+    const gauge = $('input[name="rdGauge"]:checked')?.value || spot.gauge;
+    if (spot.example) Object.assign(EXAMPLE_SPOT, { reading: r, gauge }); else Store.put(spot.id, { ...spot, reading: r, gauge });
     closeSheet(); buzz(); render(); toast("Tips updated");
   } else if (f.id === "manualForm") {
     S.manual = { air: Number($("#mAir").value), water: Number($("#mWater").value), wind: Number($("#mWind").value), windDir: $('input[name="mDir"]:checked')?.value || "SW", sky: $('input[name="mSky"]:checked')?.value || "partly", trend: $('input[name="mTrend"]:checked')?.value || "steady" };

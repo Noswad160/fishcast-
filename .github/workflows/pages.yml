@@ -20,6 +20,8 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Test forecast engine
+        run: node --test test/*.test.js
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .

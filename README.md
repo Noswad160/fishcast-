@@ -2,22 +2,34 @@
 
 A fishing forecast that gives tips for each spot, species and set of conditions, and learns from your own catch log.
 
-It's one self-contained page, `index.html`, with no build step.
+**Use it:** https://noswad160.github.io/fishcast-/. On your phone, add it to your home screen (Safari: Share button, then *Add to Home Screen*; Chrome: ⋮ menu, then *Add to Home screen*). It then opens full screen like an app and keeps working without signal.
 
 ## What it does
-- **Spots**: save a location, water type, usual clarity, the structure there (points, docks, grass, oyster bars, inlets…) and the species you target.
-- **Live conditions** (from [Open-Meteo](https://open-meteo.com), no API key needed): air temperature, wind, gusts, pressure and its 3-hour trend, cloud cover, rain, cold-front detection and, for saltwater spots, sea-surface temperature and waves. The page computes sun and moon positions itself (sunrise and sunset, moon phase, and solunar major and minor periods).
-- **Bite score**: hourly for the next 48 hours, with the factors behind it (for example "+12 falling pressure" or "−10 post-front") and the three best 2-hour windows.
-- **Game plan**: seasonal pattern by water temperature for 14 species (where the fish are, what to throw, how to fish it), plus tips for the current conditions (pressure, wind direction and which bank to fish, sky, rain, clarity, light, solunar, tide) and tips for each kind of structure at the spot.
-- **Catch log**: every catch, and every trip with no bites, saves a snapshot of the conditions. The Today tab shows what you've caught at this spot in similar conditions, and the log shows your patterns by lure, time of day, pressure, sky, water temperature and tide.
-
-## Run it
-Open `index.html` in a browser, or serve the folder (`python -m http.server`).
-To use it on your phone, enable GitHub Pages (Settings → Pages → Source: GitHub Actions) and run the `fishcast-pages` workflow (it also runs on every push to `main`). Then add the page to your home screen.
-
-Spots and catches are stored in the browser's localStorage. Inside a Claude artifact they're stored in your private artifact data instead.
+- **Spots**: add one in a few taps (use your location, search a lake, or paste coordinates), pick the water type and species, and optionally the structure there (points, docks, grass, rock, ledges…). The Spots tab ranks your spots by how good the bite is right now.
+- **Live conditions**, with no API keys needed:
+  - water temperature and its 3-day trend from the nearest USGS gauge, where there is one
+  - air temperature, wind, gusts, pressure and its trend, cloud cover, rain and cold-front detection, from [Open-Meteo](https://open-meteo.com)
+  - sun, moon and solunar times, calculated on the phone
+- **Today**:
+  - a 0–100 bite score with a plain-English summary: how good, when to go, and what to start with
+  - the factors behind the score, the best 2-hour windows, and a 48-hour chart
+  - a game plan: the seasonal pattern for your species at today's water temperature, tips for today's conditions, and tips for each kind of structure at the spot
+- **Catch log**: tap **＋ Catch**, pick the species and lure, and save. Conditions are saved automatically. Log trips with no bites too. Fishcast shows what worked at each spot in conditions like today's, and your patterns by lure, time of day, pressure, sky and water temperature.
+- **Backup**: spots and catches are stored on your phone. Save a backup file from the Spots tab, and restore it on a new phone.
 
 ## Accuracy notes
-- Freshwater temperature is **estimated** from the last 4–7 days of air temperature and can be off by 5 °F or more. A thermometer reading entered on the Today tab overrides it for 3 days, and it drives most of the advice.
-- Tide state is entered by hand. Tide predictions aren't fetched yet.
+- Water temperature comes from, in order:
+  1. your own thermometer reading, used for 3 days;
+  2. the nearest [USGS](https://waterdata.usgs.gov) gauge within 20 miles that has reported in the last day. You can turn this off for a spot, since a river gauge can read a few degrees off from a lake;
+  3. otherwise an estimate from the last 4–7 days of air temperature, which can be off by 5 °F or more.
 - The bite score is a set of rules of thumb, not a calibrated model. Your catch log is what makes it specific to your water.
+- Saltwater spots are supported too, but tide state is entered by hand.
+
+## Files
+- `index.html`, `styles.css`: the app shell.
+- `engine.js`: forecast logic (astronomy, species data, gauges, scoring, tips). Doesn't touch the page, so it's tested in Node.
+- `app.js`: screens, bottom sheets, storage and the per-spot forecast cache.
+- `sw.js`, `manifest.webmanifest`, icons: installable app and offline support. Bump `VERSION` in `sw.js` when app files change.
+- `test/`: engine tests. Run `node --test test/*.test.js`; they also run before every deploy.
+
+Run locally with `python -m http.server` and open http://localhost:8000. Pushing to `main` tests and deploys to GitHub Pages.

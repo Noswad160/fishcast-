@@ -220,6 +220,7 @@ async function loadLive(spot) {
     temperature_unit: "fahrenheit", wind_speed_unit: "mph", precipitation_unit: "inch",
     timeformat: "unixtime", timezone: "auto", past_days: 7, forecast_days: 3,
   });
+  const gaugeP = envOf(spot) === "fresh" ? loadGauge(spot).catch(() => null) : Promise.resolve(null);
   const j = await getJSON("https://api.open-meteo.com/v1/forecast?" + q);
   const H = j.hourly, last = {};
   const pick = (k, i) => { const v = H[k][i]; if (v != null) last[k] = v; return last[k] ?? 0; };
@@ -229,7 +230,7 @@ async function loadLive(spot) {
     cloud: pick("cloud_cover", i), precip: pick("precipitation", i),
   }));
   deriveHours(hours);
-  const cond = { mode: "live", hours, tz: j.utc_offset_seconds || 0, fetchedAt: Date.now(), sst: null, wave: null };
+  const cond = { mode: "live", hours, tz: j.utc_offset_seconds || 0, fetchedAt: Date.now(), sst: null, wave: null, gauge: await gaugeP };
   if (envOf(spot) === "salt") {
     try {
       const mq = new URLSearchParams({ latitude: spot.lat, longitude: spot.lon, hourly: "sea_surface_temperature,wave_height", temperature_unit: "fahrenheit", timeformat: "unixtime", timezone: "auto", forecast_days: 2 });
@@ -249,10 +250,51 @@ async function loadLive(spot) {
   }
   return cond;
 }
+/* USGS stream and lake gauges (legacy NWIS instantaneous-values service), parameter 00010 = water temperature. */
+const GAUGE_MAX_MI = 20, GAUGE_MAX_AGE = 24 * hourMs;
+function milesBetween(a, b) {
+  const p1 = a.lat * RAD, p2 = b.lat * RAD, dp = p2 - p1, dl = (b.lon - a.lon) * RAD;
+  const h = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+  return 3958.8 * 2 * Math.asin(Math.sqrt(h));
+}
+// Nearest gauge with a reading in the last day, with its 3-day change. Returns null if there isn't one.
+function parseGauges(json, spot, now = Date.now()) {
+  const seen = new Set(), found = [];
+  for (const ts of (json && json.value && json.value.timeSeries) || []) {
+    const si = ts.sourceInfo || {}, g = si.geoLocation && si.geoLocation.geogLocation, id = si.siteCode && si.siteCode[0] && si.siteCode[0].value;
+    if (!g || !id || seen.has(id)) continue;
+    const noData = ts.variable && ts.variable.noDataValue, unit = (ts.variable && ts.variable.unit && ts.variable.unit.unitCode) || "deg C";
+    const toF = v => /F/i.test(unit) ? v : v * 9 / 5 + 32;
+    const vals = ((ts.values && ts.values[0] && ts.values[0].value) || [])
+      .map(v => ({ t: Date.parse(v.dateTime), f: toF(Number(v.value)), raw: Number(v.value) }))
+      .filter(v => isFinite(v.t) && isFinite(v.f) && v.raw !== noData && v.f > 28 && v.f < 105);
+    if (!vals.length) continue;
+    const last = vals[vals.length - 1];
+    if (now - last.t > GAUGE_MAX_AGE) continue;
+    seen.add(id);
+    const first = vals.find(v => v.t >= last.t - 72 * hourMs) || vals[0];
+    found.push({ id, name: si.siteName || "USGS gauge", lat: g.latitude, lon: g.longitude, dist: milesBetween(spot, { lat: g.latitude, lon: g.longitude }),
+      at: last.t, f: Math.round(last.f * 10) / 10, change: Math.round((last.f - first.f) * 10) / 10, spanH: Math.round((last.t - first.t) / hourMs) });
+  }
+  found.sort((a, b) => a.dist - b.dist);
+  return found[0] && found[0].dist <= GAUGE_MAX_MI ? found[0] : null;
+}
+async function loadGauge(spot) {
+  const dLat = GAUGE_MAX_MI / 69, dLon = dLat / Math.max(0.2, Math.cos(spot.lat * RAD));
+  const box = [spot.lon - dLon, spot.lat - dLat, spot.lon + dLon, spot.lat + dLat].map(v => v.toFixed(4)).join(",");
+  const j = await getJSON(`https://waterservices.usgs.gov/nwis/iv/?format=json&bBox=${box}&parameterCd=00010&siteStatus=active&period=P3D`, 12000);
+  return parseGauges(j, spot);
+}
+function gaugeFor(spot, cond) {
+  const g = cond && cond.gauge;
+  return g && spot.gauge !== "off" && Date.now() - g.at < GAUGE_MAX_AGE ? g : null;
+}
 function waterOf(spot, cond) {
   const r = spot.reading;
-  if (r && r.water != null && Date.now() - r.at < 3 * 864e5) return { v: r.water, src: "your reading" };
+  if (r && r.water != null && Date.now() - (r.waterAt ?? r.at) < 3 * 864e5) return { v: r.water, src: "your reading" };
   if (cond.mode === "manual") return { v: cond.waterEst, src: "entered" };
+  const g = gaugeFor(spot, cond);
+  if (g) return { v: Math.round(g.f), src: `USGS gauge · ${Math.round(g.dist)} mi`, gauge: g };
   if (cond.sst != null) return { v: Math.round(cond.sst), src: "sea surface" };
   return { v: cond.waterEst ?? 60, src: "estimate" };
 }
@@ -328,7 +370,7 @@ function phaseOf(sp, water, season) {
 }
 
 function conditionTips(ctx) {
-  const { h, sp, env, water, spot } = ctx, tips = [];
+  const { h, sp, env, spot } = ctx, water = ctx.water.v, tips = [];
   const T = (w, title, body) => tips.push({ w, title, body });
   const dir8 = compass8(h.dir), down = COMPASS_LONG[compass8(h.dir + 180)];
   const tc = trendCat(h), sky = skyCat(h);
@@ -374,13 +416,23 @@ function conditionTips(ctx) {
     else T(9, "Check the tide", "Moving water is the biggest factor inshore. Look up your nearest tide station and set the tide above for tips based on it.");
     if (ctx.wave != null && ctx.wave > 4) T(6, `Rough surf: about ${ctx.wave.toFixed(0)} ft`, "Use heavier sinkers (pyramid or sputnik) and fish the closer trough.");
   }
+  const g = ctx.water.gauge;
+  if (g && g.spanH >= 36 && Math.abs(g.change) >= 1.5) {
+    const days = Math.round(g.spanH / 24), deg = Math.abs(g.change).toFixed(1);
+    if (g.change > 0) T(8, `Water warmed ${deg}°F in ${days} days`, water < 70
+      ? "Warming water wakes fish up. Expect them shallower and more willing to chase. Sunny banks and shallow flats should get better through the day."
+      : "Water is getting warmer. Fish the early and late hours and look for shade, current and deeper edges midday.");
+    else T(8, `Water cooled ${deg}°F in ${days} days`, ctx.season === "cooling" && g.change > -5
+      ? "A steady fall cool-down gets fish feeding on baitfish. Cover water and follow the bait."
+      : "Falling water temperature usually slows the bite. Fish a little deeper and slower, and give them time to adjust.");
+  }
   if (water < sp.live[0] + 5) T(8, `Very cold water for ${sp.name.toLowerCase()}`, "Fish are sluggish and deep. Use the slowest presentation you have and expect light bites.");
   else if (water > sp.opt[1] + 5) T(8, "Hot water", "Oxygen is lower in hot water. Fish early and late, deeper, or wherever there's current or shade.");
   return tips.sort((a, b) => b.w - a.w);
 }
 
 function structureTip(id, ctx) {
-  const { water, env, phase, h } = ctx, sunny = skyCat(h) === "sunny", windy = h.wind >= 8, salt = env === "salt";
+  const { env, phase, h } = ctx, water = ctx.water.v, sunny = skyCat(h) === "sunny", windy = h.wind >= 8, salt = env === "salt";
   const warmSpring = ctx.season === "warming" && water < 62;
   switch (id) {
     case "points": return windy ? "Start on points the wind is hitting. Work from the shallow side out to the first drop at the tip." : "Fish the tip where it drops toward the channel. Fan-cast both sides, then work the break.";
@@ -473,4 +525,4 @@ function headline(ctx) {
   return `${lead} for ${ctx.sp.name.toLowerCase()}.${when} Start with a ${bait.charAt(0).toLowerCase() + bait.slice(1)}.`;
 }
 
-if (typeof module !== "undefined") module.exports = { SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };
+if (typeof module !== "undefined") module.exports = { parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };
