@@ -116,6 +116,44 @@ function closeSheet() {
   $("#sheet").hidden = true; document.body.classList.remove("locked"); $("#sheetBody").innerHTML = "";
   if (sheetReturn && sheetReturn.focus) sheetReturn.focus({ preventScroll: true });
 }
+// Swipe a sheet down to close it: drag from the handle, or from anywhere once the sheet is scrolled to the top.
+(function sheetSwipe() {
+  const panel = $("#sheet .panel"), scrim = $("#sheet .scrim");
+  let startY = 0, dy = 0, tracking = false, dragging = false, samples = [];
+  const reset = () => { panel.style.transition = panel.style.transform = scrim.style.transition = scrim.style.opacity = ""; };
+  panel.addEventListener("touchstart", e => {
+    tracking = e.touches.length === 1 && (panel.scrollTop <= 0 || !!e.target.closest(".grab"));
+    dragging = false; dy = 0; startY = e.touches[0].clientY; samples = [];
+  }, { passive: true });
+  panel.addEventListener("touchmove", e => {
+    if (!tracking) return;
+    const d = e.touches[0].clientY - startY;
+    if (!dragging) {
+      if (d < -4) { tracking = false; return; } // scrolling up: let the sheet scroll
+      if (d < 8) return;
+      dragging = true;
+    }
+    e.preventDefault();
+    dy = Math.max(0, d);
+    const now = performance.now(); samples.push([now, dy]); while (samples.length > 2 && now - samples[0][0] > 100) samples.shift();
+    panel.style.transition = "none"; panel.style.transform = `translateY(${dy}px)`;
+    scrim.style.opacity = String(Math.max(0, 1 - dy / panel.offsetHeight));
+  }, { passive: false });
+  const end = () => {
+    tracking = false;
+    if (!dragging) return;
+    dragging = false;
+    // Speed over the last ~100 ms, like iOS: a quick flick closes even if the drag was short.
+    const [t0, y0] = samples[0] || [0, 0], dt = performance.now() - t0, flick = dt > 0 && dt < 250 && (dy - y0) / dt > 0.5;
+    panel.style.transition = "transform .2s ease-out"; scrim.style.transition = "opacity .2s ease-out";
+    if (flick || dy > Math.min(160, panel.offsetHeight * 0.25)) {
+      panel.style.transform = "translateY(100%)"; scrim.style.opacity = "0";
+      setTimeout(() => { closeSheet(); reset(); }, 200);
+    } else { panel.style.transform = ""; scrim.style.opacity = ""; setTimeout(reset, 200); }
+  };
+  panel.addEventListener("touchend", end);
+  panel.addEventListener("touchcancel", end);
+})();
 const chip = (type, name, value, label, checked) => `<label class="chip"><input type="${type}" name="${name}" value="${esc(value)}"${checked ? " checked" : ""}>${esc(label)}</label>`;
 const stepper = (id, value, step, min) => `<span class="stepper"><button type="button" data-act="step" data-for="${id}" data-d="-${step}" aria-label="Less">−</button><input type="number" id="${id}" value="${esc(value)}" step="${step}" min="${min}" inputmode="decimal"><button type="button" data-act="step" data-for="${id}" data-d="${step}" aria-label="More">+</button></span>`;
 const ICON_PIN = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>`;

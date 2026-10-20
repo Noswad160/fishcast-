@@ -212,7 +212,8 @@ button.tile .s { color: var(--water); font-weight: 600; }
 .panel { position: relative; background: var(--surface); border-radius: 20px 20px 0 0; max-height: 92%; overflow-y: auto; overscroll-behavior: contain;
   width: 100%; max-width: 720px; margin: 0 auto; box-shadow: var(--shadow);
   padding: 8px max(16px, env(safe-area-inset-right, 0px)) calc(20px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
-.panel .grab { width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 10px; }
+.panel .grab { position: relative; width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 10px; }
+.panel .grab::after { content: ""; position: absolute; inset: -14px -80px; } /* bigger target for swiping down */
 .panel form, .panel .body { display: flex; flex-direction: column; gap: 16px; }
 .sheethead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .pickrow { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; padding: 14px 4px; border: 0; border-bottom: 1px solid var(--line); background: none; cursor: pointer; text-align: left; }
