@@ -270,6 +270,7 @@ body.locked .mapcard { visibility: hidden; }
 .stats dd span { font-weight: 400; }
 .iconbtn.del { width: 36px; height: 36px; color: var(--muted); margin: -6px -8px 0 0; }
 .iconbtn.del svg { width: 18px; height: 18px; }
-/* While a sheet is dragged it slides as its own layer instead of repainting. */
-.panel.dragging { will-change: transform; user-select: none; -webkit-user-select: none; }
+/* An open sheet is its own layer from the start, so a drag slides it without a first-frame hitch. */
+.sheet:not([hidden]) .panel { will-change: transform; }
+.panel.dragging { user-select: none; -webkit-user-select: none; }
 .sheet .scrim { will-change: opacity; }
