@@ -185,7 +185,19 @@ function render() {
   $("#fab").hidden = S.tab === "spots";
   $("#refreshBtn").classList.toggle("spin", !!S.loading[spot.id]);
   if (!(S.tab === "spots" && S.spotsMode === "map")) { dropSpotsMap(); delete view.dataset.screen; }
+  // Redrawing resets sideways-scrolling rows (species chips, best times); keep them where they were.
+  const rows = $$(".chipbar, .hscroll").map(el => [el.className, el.scrollLeft]);
   if (S.tab === "spots") renderSpots(); else if (S.tab === "log") renderLog(); else renderToday();
+  for (const [cls, left] of rows) { const el = view.querySelector("." + cls.split(" ")[0]); if (el) el.scrollLeft = left; }
+  revealSelectedChip();
+}
+// Make sure the selected species chip is fully on screen.
+function revealSelectedChip() {
+  const bar = view.querySelector(".chipbar"), sel = bar && bar.querySelector('[aria-pressed="true"]');
+  if (!sel) return;
+  const pad = 16, left = sel.offsetLeft - bar.offsetLeft, right = left + sel.offsetWidth;
+  if (left - pad < bar.scrollLeft) bar.scrollLeft = Math.max(0, left - pad);
+  else if (right + pad > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = right + pad - bar.clientWidth;
 }
 
 function dialSvg(score) {
