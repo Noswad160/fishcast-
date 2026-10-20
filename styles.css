@@ -254,7 +254,7 @@ button.tile .s { color: var(--water); font-weight: 600; }
    Hide the spots map while a form is open, and give fixed elements their own layers. */
 body.locked .mapcard { visibility: hidden; }
 .top, .nav, .sheet, .mapview { transform: translateZ(0); }
-/* Long-press adds a spot; stop the phone's own text-selection and link menus from firing too. */
+/* Stop the phone's own long-press menus ("Save image", text selection) on map tiles. */
 .mapbox { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 .mpin { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--pin-ring); font-family: var(--f-display); font-weight: 700; font-size: 1.05rem;
   border: 3px solid var(--pin-ring); box-shadow: 0 2px 6px rgba(0, 0, 0, .4); }

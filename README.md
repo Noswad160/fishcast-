@@ -6,7 +6,7 @@ A fishing forecast that gives tips for each spot, species and set of conditions,
 
 ## What it does
 - **Spots**: add one in a few taps. Use where you're standing, search a lake, or **pick it on a map**: satellite or street view, drag until the pin sits on your point, dock or creek mouth. Then choose the water type, the species and, optionally, the structure there (points, docks, grass, rock, ledges…).
-- **Spots tab**: your spots ranked by how good the bite is right now, as a list or as pins on a map. Tap a pin for its forecast, or long-press the map to add a spot there.
+- **Spots tab**: your spots ranked by how good the bite is right now, as a list or as pins on a map. Tap a pin for its forecast.
 - **Live conditions**, with no API keys needed:
   - water temperature and its 3-day trend from the nearest USGS gauge, where there is one
   - air temperature, wind, gusts, pressure and its trend, cloud cover, rain and cold-front detection, from [Open-Meteo](https://open-meteo.com)

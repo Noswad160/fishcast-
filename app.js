@@ -263,7 +263,7 @@ function renderSpots() {
   if (!own.length) html += `<p class="empty">You haven't added a spot yet. Add the places you fish, and Fishcast ranks them by how good the bite is right now.</p>`;
   if (S.spotsMode === "map") {
     view.innerHTML = html + `<div class="mapcard"><div id="spotsMap" class="mapbox" aria-label="Map of your spots"></div><button type="button" class="btn sm maplayer" data-act="mapLayer">${layerPref() === "satellite" ? "Map view" : "Satellite"}</button></div>
-      <p class="small muted">Pins show the bite score right now. Tap one for its forecast, or long-press the map to add a spot there.</p>`;
+      <p class="small muted">Pins show the bite score right now. Tap one for its forecast. To add a spot, tap Add spot, then Pick on map.</p>`;
     view.dataset.screen = "spotsmap";
     showSpotsMap($("#spotsMap")); warmSpots();
     return;

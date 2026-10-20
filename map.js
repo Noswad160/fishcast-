@@ -1,6 +1,6 @@
 "use strict";
 /* Maps: Leaflet (loaded only when a map is opened), a full-screen pin picker, and the spots map.
-   Uses globals from app.js at call time ($, esc, LS, S, spots, spotScore, spotSheet, toast). */
+   Uses globals from app.js at call time ($, $$, esc, LS, spots, spotScore, toast). */
 const LEAFLET_URL = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/";
 let leafletP = null;
 function loadLeaflet() {
@@ -93,8 +93,6 @@ async function showSpotsMap(el) {
   dropSpotsMap();
   spotsMap = Lf.map(el, { zoomControl: false });
   setBase(spotsMap, layerPref());
-  // Long-press (or right-click) to start a new spot at that point.
-  spotsMap.on("contextmenu", e => spotSheet({ lat: Number(e.latlng.lat.toFixed(5)), lon: Number(e.latlng.lng.toFixed(5)) }));
   updateSpotMarkers(true);
 }
 function updateSpotMarkers(fit) {
