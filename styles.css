@@ -262,3 +262,4 @@ body.locked .mapcard { visibility: hidden; }
 .leaflet-container { font: inherit; background: var(--water-soft); }
 .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--surface); color: var(--ink); }
 .leaflet-container a.leaflet-popup-close-button { color: var(--muted); }
+#coordNote:empty { display: none; }

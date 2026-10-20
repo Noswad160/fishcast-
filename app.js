@@ -361,7 +361,7 @@ function spotSheet(spot) {
       <div class="row"><input type="search" id="fSearch" placeholder="Search a lake or town" style="flex:1 1 160px"><button type="button" class="btn ghost" data-act="search">Search</button></div>
       <div id="searchOut" class="list"></div>
       <input type="text" id="fCoords" value="${s.lat != null ? esc(s.lat + ", " + s.lon) : ""}" placeholder="or paste coordinates, e.g. 34.4201, -86.2310">
-      <span class="small muted" id="coordNote">Pick on map is the easiest way to put the pin on your exact point, dock or creek mouth.</span>
+      <span class="small muted" id="coordNote" role="status"></span>
     </div>
     <label class="field"><span class="label">Name</span><input type="text" id="fName" value="${esc(s.name)}" placeholder="North point, Lake Murray"></label>
     <div class="field"><span class="label">Type of water</span><div class="chips">${Object.entries(WATER_TYPES).filter(([k, v]) => v.env === "fresh" || k === s.water).map(([k, v]) => chip("radio", "fWater", k, v.name, k === s.water)).join("")}</div></div>
