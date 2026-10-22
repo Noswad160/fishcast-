@@ -66,6 +66,13 @@ test("a gauge feeds water temperature and a trend tip, and can be turned off per
   assert.match(ctx.water.src, /USGS · 4 mi/);
   assert.ok(E.conditionTips(ctx).some(t => /Water cooled 3.2°F/.test(t.title)));
   assert.notStrictEqual(E.buildCtx({ ...lake, gauge: "off" }, cond, "lmb").water.src.slice(0, 4), "USGS");
+  // Ponds ignore gauges unless turned on; rivers use them by default. "auto" (saved by older versions) means the default.
+  const pond = { ...lake, water: "pond" };
+  assert.strictEqual(E.buildCtx(pond, cond, "lmb").water.src, "estimate");
+  assert.strictEqual(E.buildCtx({ ...pond, gauge: "auto" }, cond, "lmb").water.src, "estimate");
+  assert.match(E.buildCtx({ ...pond, gauge: "on" }, cond, "lmb").water.src, /^USGS/);
+  assert.match(E.buildCtx({ ...lake, water: "river" }, cond, "lmb").water.src, /^USGS/);
+  assert.ok(!E.conditionTips(E.buildCtx(pond, cond, "lmb")).some(t => /Water cooled/.test(t.title)), "no gauge trend tip for a pond");
 });
 
 test("time ranges and day words read naturally", () => {

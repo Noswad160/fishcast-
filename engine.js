@@ -331,9 +331,12 @@ async function loadGauge(spot) {
   const j = await getJSON(`https://waterservices.usgs.gov/nwis/iv/?format=json&bBox=${box}&parameterCd=00010&siteStatus=active&period=P3D`, 12000);
   return parseGauges(j, spot);
 }
+// USGS temperature gauges are on rivers and streams. Use one by default for rivers and lakes, but not for ponds:
+// a small pond warms and cools with the air far faster than flowing water. A spot can turn it on ("on") or off ("off").
+const usesGauge = spot => spot.gauge === "on" || (spot.gauge !== "off" && spot.water !== "pond");
 function gaugeFor(spot, cond) {
   const g = cond && cond.gauge;
-  return g && spot.gauge !== "off" && Date.now() - g.at < GAUGE_MAX_AGE ? g : null;
+  return g && usesGauge(spot) && Date.now() - g.at < GAUGE_MAX_AGE ? g : null;
 }
 function waterOf(spot, cond) {
   const r = spot.reading;
@@ -712,4 +715,4 @@ function skyStops({ sky, wx }) {
   return (SKIES[sky] && SKIES[sky][wx]) || DAY[wx].map(c => sky === "day" ? c : mixDark(c, DIM[sky]));
 }
 
-if (typeof module !== "undefined") module.exports = { blendedScores, whenWord, dayParts, skyStops, sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };
+if (typeof module !== "undefined") module.exports = { usesGauge, blendedScores, whenWord, dayParts, skyStops, sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };

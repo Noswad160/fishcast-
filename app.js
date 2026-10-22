@@ -596,8 +596,8 @@ function readingSheet() {
   const w = cond ? waterOf(spot, cond) : { v: 60, src: "estimate" }, tide = tideOf(spot), g = cond && cond.gauge, tz = cond ? cond.tz : deviceTz();
   const gaugeHtml = g ? `<div class="field"><span class="label">Nearest USGS gauge</span>
       <p class="small"><b>${esc(titleCase(g.name))}</b>, ${Math.round(g.dist)} mi away: ${g.f}°F at ${fmtTime(g.at, tz)}${g.spanH >= 36 ? `, ${g.change >= 0 ? "up" : "down"} ${Math.abs(g.change)}°F in ${Math.round(g.spanH / 24)} days` : ""}.</p>
-      <div class="chips">${chip("radio", "rdGauge", "auto", "Use it here", spot.gauge !== "off")}${chip("radio", "rdGauge", "off", "Don't use it here", spot.gauge === "off")}</div>
-      <span class="small muted">A river gauge can read a few degrees off from a lake. Your own reading always comes first.</span></div>`
+      <div class="chips">${chip("radio", "rdGauge", "on", "Use it here", usesGauge(spot))}${chip("radio", "rdGauge", "off", "Don't use it here", !usesGauge(spot))}</div>
+      <span class="small muted">${spot.water === "pond" ? "Ponds don't use a gauge unless you turn it on. River water rarely matches a small pond, which warms and cools with the air much faster." : "A river gauge can read a few degrees off from a lake. Your own reading always comes first."}</span></div>`
     : !salt && cond && cond.mode === "live" ? `<p class="small muted">No USGS water-temperature gauge within 20 miles has reported in the last day, so Fishcast estimates it from air temperatures.</p>` : "";
   openSheet(`<form id="readingForm" novalidate>
     <h3 id="sheetTitle">What you see on the water</h3>
