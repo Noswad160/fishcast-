@@ -1,0 +1,4 @@
+# Scratch output from local testing
+*.png
+!icon-*.png
+!apple-touch-icon.png
