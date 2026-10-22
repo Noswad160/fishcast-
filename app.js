@@ -65,7 +65,7 @@ function ensureCond(spot, force) {
   S.tried[spot.id] = Date.now();
   const p = (async () => {
     try {
-      const live = await loadLive(spot);
+      const live = await loadLive(spot, c);
       S.conds[spot.id] = live; S.errors[spot.id] = "";
       if (!spot.example) LS.set("fishcast.cond." + spot.id, live);
       return live;
@@ -348,7 +348,7 @@ function renderToday() {
   if (!cond) { view.innerHTML = waterband(band + `<div class="skeleton" aria-label="Loading conditions"></div>`) + tripBar(spot); return; }
 
   const ctx = buildCtx(spot, cond, spId), { h, sp, tz, astro, water } = ctx, now = ctx.now, err = S.errors[spot.id];
-  const wins = bestWindows(ctx.future);
+  const wins = bestWindows(ctx.future, astro);
   const ups = now.factors.filter(f => f.v > 0).sort((a, b) => b.v - a.v), downs = now.factors.filter(f => f.v < 0).sort((a, b) => a.v - b.v);
   band += `<div class="hero" aria-label="Bite outlook">
       ${bobberSvg(now.score)}
@@ -358,8 +358,8 @@ function renderToday() {
     <p class="headline">${esc(headline(ctx))}</p>
     <div class="factors">${ups.map(f => `<span class="factor up">+${f.v} ${esc(f.label)}</span>`).join("")}${downs.map(f => `<span class="factor down">${f.v} ${esc(f.label)}</span>`).join("")}</div>
     <button class="linkbtn small" data-act="howScore" style="padding:0;align-self:flex-start">How is this scored?</button>
-    <span class="label">Best times, next 48 hours</span>
-    <div class="hscroll">${wins.map(w => { const on = w.start <= Date.now() && w.end > Date.now(); return `<div class="win${on ? " now" : ""}"><span class="small muted">${on ? "Now" : (d => d.charAt(0).toUpperCase() + d.slice(1))(dayWord(w.start, tz))}</span><b>${fmtRange(w.start, w.end, tz)}</b><span class="small" style="color:${scoreColor(w.avg)}">${scoreLabel(w.avg)} · ${w.avg}</span></div>`; }).join("")}</div>`;
+    <span class="label">Coming up</span>
+    <div class="hscroll">${wins.map(w => { const on = w.start <= Date.now() && w.end > Date.now(); return `<div class="win${w.best ? " best" : ""}">${w.best ? `<span class="besttag">Best</span>` : ""}<span class="small muted">${(d => d.charAt(0).toUpperCase() + d.slice(1))(on ? "now" : whenWord(w, tz))}</span><b>${fmtRange(on ? Date.now() : w.start, w.end, tz)}</b><span class="small"><i class="dotc" style="background:${scoreColor(w.avg)}"></i>${scoreLabel(w.avg)} · ${w.avg}</span></div>`; }).join("")}</div>`;
   let html = waterband(band) + tripBar(spot);
   if (cond.mode === "manual") html += `<section class="banner warn"><div><b>${esc(err || "Live weather isn't loaded.")} Showing conditions you entered.</b><div class="row"><button class="btn sm" data-act="manual">Edit conditions</button><button class="btn sm ghost" data-act="refresh">Try again</button></div></div></section>`;
   else if (!isFresh(cond) && !S.loading[spot.id]) html += `<section class="banner info"><div><span class="small">${err ? esc(err) + " " : ""}Forecast from ${ago(cond.fetchedAt)}.</span></div></section>`;

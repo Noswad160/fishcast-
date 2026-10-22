@@ -12,9 +12,10 @@ A fishing forecast that gives tips for each spot, species and set of conditions,
   - air temperature, wind, gusts, pressure and its trend, cloud cover, rain and cold-front detection, from [Open-Meteo](https://open-meteo.com)
   - sun, moon and solunar times, calculated on the phone
 - **Today**:
-  - a 0–100 bite score with a plain-English summary: how good, when to go, and what to start with
-  - the factors behind the score, the best 2-hour windows, and a 48-hour chart
+  - a 0–100 bite score with a plain-English summary: how good, the best time, and what to start with
+  - the factors behind the score, a "coming up" outlook by part of the day (morning, midday, evening, night, bounded by the sun at the spot) with the best one highlighted, and a 48-hour chart
   - a game plan: the seasonal pattern for your species at today's water temperature, tips for today's conditions, and tips for each kind of structure at the spot
+  - Scores are built to be steady: every factor eases in and out instead of switching at a threshold, each hour is blended with its neighbours, and the best time only moves when another part of the day pulls clearly ahead. A test checks that small forecast updates move any hour by at most 10 points.
 - **Trips**: tap **Start trip** when you get to the water and **End trip** when you leave (forgot? set the length when you end it, or log a past trip). Catches logged in between belong to the trip, and every hour fished is scored with the same bite score you saw on Today, using the weather that actually happened.
 - **Forecast report card**: fish per hour by what the score said (Hot, Good, Fair, Slow) at each spot, with a plain verdict: the forecast is working here, there's no clear difference, or it's backwards here. It waits for at least 3 trips, 6 hours and 5 fish, and calls it an early read until 10 trips and 15 fish. No other fishing app shows whether its forecast actually works.
 - **Catch log**: tap **＋ Catch**, pick the species and lure, and save. Conditions and the bite score are saved automatically. Fishcast shows what worked at each spot in conditions like today's, and your patterns by lure, time of day, pressure, sky and water temperature.

@@ -39,7 +39,7 @@ async function loadEngine() {
     if (code.includes("function buildCtx")) fm.writeString(path, code);
   } catch (e) { /* offline: use the saved copy */ }
   if (!fm.fileExists(path)) throw new Error("Open the widget once with a connection to download Fishcast.");
-  return new Function(fm.readString(path) + "\nreturn { loadLive, buildCtx, headline, bestWindows, scoreLabel, sceneOf, skyStops, fmtRange, dayWord, speciesFor, parseCoords, compass, SPECIES, WATER_TYPES };")();
+  return new Function(fm.readString(path) + "\nreturn { loadLive, buildCtx, headline, bestWindows, whenWord, fmtTime, scoreLabel, sceneOf, skyStops, fmtRange, dayWord, speciesFor, parseCoords, compass, SPECIES, WATER_TYPES };")();
 }
 
 function parseParam(E) {
@@ -53,12 +53,13 @@ function parseParam(E) {
 
 async function loadCond(E, spot) {
   const path = cachePath(spot.id.replace(/[^\w.-]/g, "_") + ".json");
+  const prev = fm.fileExists(path) ? JSON.parse(fm.readString(path)) : null;
   try {
-    const cond = await E.loadLive(spot);
+    const cond = await E.loadLive(spot, prev);
     fm.writeString(path, JSON.stringify(cond));
     return { cond, stale: false };
   } catch (e) {
-    if (fm.fileExists(path)) return { cond: JSON.parse(fm.readString(path)), stale: true };
+    if (prev) return { cond: prev, stale: true };
     throw new Error("No connection, and no saved forecast yet.");
   }
 }
@@ -101,9 +102,9 @@ function dot(stack, color) {
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 
 function nextWindowText(E, ctx) {
-  const w = E.bestWindows(ctx.future).find(x => x.end > Date.now());
+  const w = E.bestWindows(ctx.future, ctx.astro).find(x => x.best);
   if (!w) return "";
-  return w.start <= Date.now() ? "Best time is now" : `Best ${E.dayWord(w.start, ctx.tz) === "today" ? "" : cap(E.dayWord(w.start, ctx.tz)) + " "}${E.fmtRange(w.start, w.end, ctx.tz)}`;
+  return w.start <= Date.now() ? `Best now, until ${E.fmtTime(w.end, ctx.tz)}` : `Best: ${E.whenWord(w, ctx.tz)}`;
 }
 
 function buildWidget(E, spot, ctx, stale) {

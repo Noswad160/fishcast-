@@ -158,3 +158,42 @@ test("scene follows the sun at the spot and the current weather", () => {
   assert.strictEqual(wx({ code: 73 }), "snow");
   assert.strictEqual(wx({ code: 95 }), "storm");
 });
+
+test("each hour is blended with its neighbours, so a one-hour spike can't flip the rating", () => {
+  const cond = E.manualCond(base); cond.mode = "live";
+  const ctx = E.buildCtx(lake, cond, "lmb");
+  for (let i = 1; i < ctx.future.length; i++) assert.ok(Math.abs(ctx.future[i].score - ctx.future[i - 1].score) <= 12, `hour ${i}`);
+});
+
+test("best times are parts of the day, bounded by the sun, in time order", () => {
+  const cond = E.manualCond(base); cond.mode = "live";
+  const ctx = E.buildCtx(lake, cond, "lmb"), wins = E.bestWindows(ctx.future, ctx.astro);
+  assert.ok(wins.length >= 3 && wins.length <= 6);
+  assert.strictEqual(wins.filter(w => w.best).length, 1);
+  for (let i = 1; i < wins.length; i++) assert.ok(wins[i].start >= wins[i - 1].end);
+  for (const w of wins) {
+    assert.ok(["morning", "midday", "evening", "night"].includes(w.part));
+    assert.ok(w.end > Date.now() && w.end - w.start >= 36e5);
+    if (w.part === "morning") assert.ok(ctx.astro.sunrise.some(r => Math.abs(w.end - (r + 3 * 36e5)) <= 3e5 || Math.abs(w.start - (r - 36e5)) <= 3e5));
+  }
+  assert.match(E.whenWord({ part: "night", start: Date.now() }, -18000), /^tonight$/);
+});
+
+test("small forecast updates barely move the score or the best times", () => {
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647, g = () => Math.sqrt(-2 * Math.log(rnd())) * Math.cos(2 * Math.PI * rnd());
+  const now = Math.floor(Date.now() / 36e5) * 36e5, hours = [];
+  for (let i = -168; i < 72; i++) { const t = now + i * 36e5, hr = ((t / 36e5 - 5) % 24 + 24) % 24;
+    hours.push({ t, air: 62 + 9 * Math.sin((hr - 9) / 24 * 2 * Math.PI), pres: 30.05 + 0.12 * Math.sin(i / 20), wind: 7 + 5 * Math.sin(i / 7), dir: 200, gust: 14,
+      cloud: 50 + 40 * Math.sin(i / 11), precip: Math.max(0, 0.05 * Math.sin(i / 9) - 0.02), code: 2 }); }
+  const cond = hs => ({ mode: "live", tz: -18000, fetchedAt: Date.now(), gauge: null, waterEst: 64, hours: E.deriveHours(hs.map(h => ({ ...h }))) });
+  const run = hs => { const c = E.buildCtx(lake, cond(hs), "lmb"); return { s: c.future.map(x => x.score), w: E.bestWindows(c.future, c.astro).filter(w => w.best).map(w => w.start).join() }; };
+  const b = run(hours);
+  let maxMove = 0, winChanges = 0;
+  for (let k = 0; k < 100; k++) {
+    const r = run(hours.map(h => ({ ...h, pres: h.pres + g() * 0.006, wind: Math.max(0, h.wind + g() * 1.2), cloud: Math.min(100, Math.max(0, h.cloud + g() * 8)), precip: Math.max(0, h.precip + g() * 0.01), air: h.air + g() * 0.8 })));
+    r.s.forEach((v, i) => { maxMove = Math.max(maxMove, Math.abs(v - b.s[i])); });
+    if (r.w !== b.w) winChanges++;
+  }
+  assert.ok(maxMove <= 10, `max move ${maxMove}`);
+  assert.ok(winChanges <= 15, `best times changed on ${winChanges}% of updates`);
+});

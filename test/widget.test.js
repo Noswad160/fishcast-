@@ -66,7 +66,7 @@ test("medium widget shows the spot, score, best time, advice and conditions", as
   assert.strictEqual(texts[0], "SEARCY");
   assert.ok(texts.some(t => /^\d{1,2}$/.test(t)), texts.join(" | "));
   assert.ok(texts.some(t => / bite$/.test(t)));
-  assert.ok(texts.some(t => /^Best /.test(t)));
+  assert.ok(texts.some(t => /^Best(: (this|tonight|tomorrow|midday|Sun|Mon|Tue|Wed|Thu|Fri|Sat)| now, until)/.test(t)), texts.join(" | "));
   assert.ok(texts.some(t => /largemouth bass/.test(t)));
   assert.ok(texts.some(t => /^Water \d+°F · Wind \d+ [NESW]+$/.test(t)));
   assert.ok(widget.backgroundGradient.colors.length === 3, "sky gradient");

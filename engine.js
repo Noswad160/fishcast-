@@ -220,11 +220,12 @@ function deriveHours(hours) {
     // Post-front: pressure has climbed ≥0.10 inHg from a low within the last 36 h.
     let lo = h.pres, loAt = i;
     for (let k = Math.max(0, i - 36); k <= i; k++) if (hours[k].pres < lo) { lo = hours[k].pres; loAt = k; }
-    h.front = (h.pres - lo >= 0.10 && i - loAt >= 3) ? "post" : (h.trend3 <= -0.03 ? "pre" : "stable");
+    h.rise = h.pres - lo; h.sinceLow = i - loAt;
+    h.front = (h.rise >= 0.10 && h.sinceLow >= 3) ? "post" : (h.trend3 <= -0.03 ? "pre" : "stable");
   }
   return hours;
 }
-async function loadLive(spot) {
+async function loadLive(spot, prev) {
   const q = new URLSearchParams({
     latitude: spot.lat, longitude: spot.lon,
     hourly: "temperature_2m,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,precipitation,weather_code",
@@ -241,7 +242,9 @@ async function loadLive(spot) {
     cloud: pick("cloud_cover", i), precip: pick("precipitation", i), code: H.weather_code ? pick("weather_code", i) : null,
   }));
   deriveHours(hours);
-  const cond = { mode: "live", hours, tz: j.utc_offset_seconds || 0, fetchedAt: Date.now(), sst: null, wave: null, gauge: await gaugeP };
+  let gauge = await gaugeP;
+  if (!gauge && prev && prev.gauge && Date.now() - prev.gauge.at < GAUGE_MAX_AGE) gauge = prev.gauge; // USGS didn't answer this time
+  const cond = { mode: "live", hours, tz: j.utc_offset_seconds || 0, fetchedAt: Date.now(), sst: null, wave: null, gauge };
   if (envOf(spot) === "salt") {
     try {
       const mq = new URLSearchParams({ latitude: spot.lat, longitude: spot.lon, hourly: "sea_surface_temperature,wave_height", temperature_unit: "fahrenheit", timeformat: "unixtime", timezone: "auto", forecast_days: 2 });
@@ -365,42 +368,99 @@ function solunarAt(ms, astro) {
 const trendCat = h => h.front === "post" ? "post-front" : h.trend3 <= -0.03 ? "falling" : h.trend3 >= 0.03 ? "rising" : "steady";
 const skyCat = h => h.precip >= 0.02 ? "rain" : h.cloud >= 70 ? "overcast" : h.cloud >= 30 ? "partly" : "sunny";
 const windCat = h => h.wind < 4 ? "calm" : h.wind <= 15 ? "breezy" : "windy";
+// 0 at a, 1 at b, linear between (a > b ramps downward).
+const ramp = (x, a, b) => clamp((x - a) / (b - a), 0, 1);
+// Every factor eases in and out instead of switching on at a threshold, so a small forecast update
+// (a few hundredths of an inch of pressure, a mile an hour of wind) moves the score a little, not a lot.
 function scoreHour(sp, h, ctx) {
-  const f = [], add = (v, label) => { if (v) f.push({ v: Math.round(v), label }); };
-  const L = lightAt(h.t, ctx.spot), water = ctx.water.v, cold = water < 50;
-  if (L.p === "dawn" || L.p === "dusk") add(4 + 14 * sp.lowLight, L.p === "dawn" ? "dawn" : "dusk");
-  else if (L.p === "night") add(sp.night * 14 - 8, "night");
-  else if (cold && ctx.env === "fresh") { const hr = shifted(h.t, ctx.tz).getUTCHours(); if (hr >= 12 && hr <= 16) add(6, "warmest hours"); }
-  else if (L.alt > 40 && h.cloud < 30) add(-8 * sp.lowLight, "high sun");
-  if (h.front === "post") add(-10, "post-front");
-  else if (h.trend3 <= -0.08) add(5, "pressure crashing");
-  else if (h.trend3 <= -0.03) add(12, "falling pressure");
-  else if (h.trend3 >= 0.06) add(-6, "rising fast");
-  if (h.wind > 20) add(-8, "strong wind");
-  else if (h.wind >= 5) add(5, "wind chop");
-  else if (h.wind < 3 && h.cloud < 40 && L.p === "day") add(-4, "calm & bright");
-  if (h.cloud >= 70 && sp.lowLight >= 0.5 && !cold && L.p === "day") add(5, "overcast");
-  if (h.precip > 0.3) add(-6, "heavy rain");
-  else if (h.precip >= 0.01) add(4, "light rain");
-  const sol = solunarAt(h.t, ctx.astro);
-  if (sol === "major") add(10, "solunar major"); else if (sol === "minor") add(6, "solunar minor");
+  const f = [], add = (v, label) => { if (Math.abs(v) >= 0.5) f.push({ v: Math.round(v), label }); };
+  const L = lightAt(h.t, ctx.spot), alt = L.alt, water = ctx.water.v, fresh = ctx.env === "fresh";
+  const coldness = fresh ? ramp(water, 54, 46) : 0, dayness = ramp(alt, 0, 10), sunny = ramp(h.cloud, 45, 20);
+  // Light: low-light peak around sunrise and sunset, night, high sun, and the warmest hours in cold water.
+  const lowLight = ramp(alt, -9, -4) * ramp(alt, 13, 6);
+  add((4 + 14 * sp.lowLight) * lowLight, L.p === "dusk" || (L.p !== "dawn" && shifted(h.t, ctx.tz).getUTCHours() >= 12) ? "dusk" : "dawn");
+  add((sp.night * 14 - 8) * ramp(alt, -4, -12), "night");
+  add(-8 * sp.lowLight * ramp(alt, 25, 45) * sunny * (1 - coldness), "high sun");
+  const d = shifted(h.t, ctx.tz), hr = d.getUTCHours() + d.getUTCMinutes() / 60 + 0.5;
+  add(6 * clamp(1 - Math.abs(hr - 14.5) / 3.5, 0, 1) * coldness, "warmest hours");
+  // Pressure: falling before a front helps (less so when it's crashing), rising fast hurts, the day after a front hurts most.
+  const post = h.rise != null ? ramp(h.rise, 0.06, 0.14) * ramp(h.sinceLow, 2, 4) : (h.front === "post" ? 1 : 0);
+  const fall = 12 * ramp(-h.trend3, 0.01, 0.04) - 7 * ramp(-h.trend3, 0.07, 0.11), rise = -6 * ramp(h.trend3, 0.03, 0.08);
+  if (post >= 0.5) add(-10 * post + (1 - post) * (fall + rise), "post-front");
+  else { add((1 - post) * fall - 10 * post, ramp(-h.trend3, 0.07, 0.11) > 0.5 ? "pressure crashing" : "falling pressure"); add((1 - post) * rise, "rising fast"); }
+  // Wind, cloud and rain.
+  add(5 * ramp(h.wind, 3, 7) * ramp(h.wind, 20, 15), "wind chop");
+  add(-8 * ramp(h.wind, 18, 26), "strong wind");
+  add(-4 * ramp(h.wind, 4, 1.5) * ramp(h.cloud, 50, 30) * dayness, "calm & bright");
+  if (sp.lowLight >= 0.5) add(5 * ramp(h.cloud, 55, 80) * dayness * (1 - coldness), "overcast");
+  add(4 * ramp(h.precip, 0.003, 0.02) * ramp(h.precip, 0.25, 0.12), "light rain");
+  add(-6 * ramp(h.precip, 0.2, 0.4), "heavy rain");
+  // Solunar periods peak at their center and taper off past their edges.
+  const mid = h.t + hourMs / 2;
+  let solV = 0, sol = "";
+  for (const w of ctx.astro.solunar) {
+    const half = (w.end - w.start) / 2, wgt = ramp(Math.abs(mid - w.center), half * 1.5, half * 0.5), v = (w.type === "major" ? 10 : 6) * wgt;
+    if (v > solV) { solV = v; sol = wgt >= 0.5 ? w.type : ""; }
+  }
+  add(solV, sol === "minor" || (!sol && solV <= 6) ? "solunar minor" : "solunar major");
   const mp = moonIllum(h.t).phase, days = Math.min(mp, Math.abs(mp - 0.5), 1 - mp) * 29.53;
-  if (days <= 2) add(3, mp > 0.25 && mp < 0.75 ? "full moon" : "new moon");
+  add(3 * ramp(days, 3, 1.5), mp > 0.25 && mp < 0.75 ? "full moon" : "new moon");
   const fit = tempFit(sp, water);
   const raw = 50 + f.reduce((a, x) => a + x.v, 0);
   const score = Math.round(clamp(clamp(raw, 5, 100) * (0.45 + 0.55 * fit), 1, 99));
   if (fit < 0.7) f.push({ v: -Math.round((1 - fit) * 30), label: water < sp.opt[0] ? "cold water" : "warm water" });
   return { t: h.t, score, factors: f, light: L.p, sol };
 }
+// Each hour's score blended with its neighbours (¼, ½, ¼). A good bite lasts a couple of hours, and a one-hour
+// spike in the inputs (a solunar period, a wobble between forecast runs) shouldn't flip the rating.
+function blendedScores(sp, ctx, hours) {
+  const raw = new Map(), byT = new Map(ctx.cond.hours.map(h => [h.t, h]));
+  const get = h => { if (!raw.has(h.t)) raw.set(h.t, scoreHour(sp, h, ctx)); return raw.get(h.t); };
+  return hours.map(h => {
+    const c = get(h), p = byT.get(h.t - hourMs), n = byT.get(h.t + hourMs);
+    return { ...c, score: Math.round(0.25 * (p ? get(p).score : c.score) + 0.5 * c.score + 0.25 * (n ? get(n).score : c.score)) };
+  });
+}
 const scoreLabel = s => s >= 75 ? "Hot" : s >= 60 ? "Good" : s >= 45 ? "Fair" : "Slow";
 const scoreColor = s => s >= 75 ? "var(--s4)" : s >= 60 ? "var(--s3)" : s >= 45 ? "var(--s2)" : "var(--s1)";
-function bestWindows(scored) {
-  const cands = [];
-  for (let i = 0; i < scored.length - 1; i++) cands.push({ i, avg: (scored[i].score + scored[i + 1].score) / 2 });
-  cands.sort((a, b) => b.avg - a.avg);
-  const pick = [];
-  for (const c of cands) { if (pick.length >= 3) break; if (pick.every(p => Math.abs(p.i - c.i) >= 4)) pick.push(c); }
-  return pick.sort((a, b) => a.i - b.i).map(p => ({ start: scored[p.i].t, end: scored[p.i].t + 2 * hourMs, avg: Math.round(p.avg) }));
+// Best times are parts of the day, fixed by the sun at the spot (morning: an hour before sunrise to 3 hours after;
+// evening: 3 hours before sunset to an hour after; midday and night in between), ranked by average score.
+// Their edges don't wander when the forecast wobbles, unlike picking the single best two-hour slot.
+function dayParts(astro) {
+  const blocks = [];
+  for (const rise of astro.sunrise) {
+    const set = astro.sunset.find(s => s > rise), next = set && astro.sunrise.find(r => r > set);
+    if (!set) continue;
+    blocks.push({ part: "morning", start: rise - hourMs, end: rise + 3 * hourMs }, { part: "midday", start: rise + 3 * hourMs, end: set - 3 * hourMs },
+      { part: "evening", start: set - 3 * hourMs, end: set + hourMs });
+    if (next) blocks.push({ part: "night", start: set + hourMs, end: next - hourMs });
+  }
+  const firstRise = astro.sunrise[0], prevSet = firstRise && [...astro.sunset].reverse().find(s => s < firstRise);
+  if (prevSet) blocks.push({ part: "night", start: prevSet + hourMs, end: firstRise - hourMs });
+  return blocks.filter(b => b.end > b.start);
+}
+function bestWindows(scored, astro) {
+  if (!scored.length) return [];
+  const from = scored[0].t, to = scored[scored.length - 1].t + hourMs, round = ms => Math.round(ms / 3e5) * 3e5;
+  const wins = dayParts(astro).map(b => ({ ...b, start: Math.max(b.start, from), end: Math.min(b.end, to) }))
+    .filter(b => b.end - b.start >= hourMs && b.end > Date.now())
+    .map(b => {
+      let sum = 0, w = 0;
+      for (const s of scored) { const o = Math.min(b.end, s.t + hourMs) - Math.max(b.start, s.t); if (o > 0) { sum += s.score * o; w += o; } }
+      return { part: b.part, start: round(b.start), end: round(b.end), avg: Math.round(sum / w) };
+    });
+  // The next parts of the day in time order. The best is the earliest one within 2 points of the top, so near-ties
+  // (a middling bite all day) don't make the highlight jump around between forecast updates.
+  const list = wins.sort((a, b) => a.start - b.start).slice(0, 6), top = Math.max(...list.map(w => w.avg));
+  const best = list.find(w => w.avg >= top - 2);
+  list.forEach(w => { w.best = w === best; });
+  return list;
+}
+// "this evening", "tonight", "tomorrow morning", "Wed midday"
+function whenWord(w, tz) {
+  const d = dayWord(w.start, tz);
+  if (d === "today") return { morning: "this morning", midday: "midday today", evening: "this evening", night: "tonight" }[w.part];
+  return `${d} ${w.part}`;
 }
 function phaseOf(sp, water, season) {
   for (const p of sp.phases) {
@@ -541,7 +601,8 @@ function manualCond(M) {
     const t = start + i * hourMs, ahead = (t - nowHour()) / hourMs, fresh = ahead >= -2 && ahead <= 12;
     hours.push({ t, air: Number(M.air), pres: 30.0, wind: Number(M.wind), dir: DIR_DEG[M.windDir] ?? 225, gust: Number(M.wind) * 1.4,
       cloud, precip: M.sky === "rain" ? 0.05 : 0, precip24: M.sky === "rain" ? 0.3 : 0,
-      trend3: fresh ? trend3 : 0, front: fresh ? (M.trend === "post-front" ? "post" : M.trend === "falling" ? "pre" : "stable") : "stable" });
+      trend3: fresh ? trend3 : 0, front: fresh ? (M.trend === "post-front" ? "post" : M.trend === "falling" ? "pre" : "stable") : "stable",
+      rise: fresh && M.trend === "post-front" ? 0.14 : 0, sinceLow: 6 });
   }
   return { mode: "manual", hours, tz, fetchedAt: Date.now(), waterEst: Number(M.water), sst: null, wave: null };
 }
@@ -554,16 +615,16 @@ function buildCtx(spot, cond, speciesId) {
   const water = waterOf(spot, cond), season = seasonOf(Date.now(), cond.tz, spot.lat);
   const ctx = { spot, cond, sp, spId, env, h, astro, water, season, tz: cond.tz, mode: cond.mode, wave: cond.wave, light: lightAt(now, spot).p };
   ctx.phase = phaseOf(sp, water.v, season);
-  ctx.future = cond.hours.filter(x => x.t >= now && x.t < now + 48 * hourMs).map(x => scoreHour(sp, x, ctx));
-  ctx.now = ctx.future[0] || scoreHour(sp, h, ctx);
+  ctx.future = blendedScores(sp, ctx, cond.hours.filter(x => x.t >= now && x.t < now + 48 * hourMs));
+  ctx.now = ctx.future[0] || blendedScores(sp, ctx, [h])[0];
   return ctx;
 }
 // One plain sentence: how good, when to go, what to start with.
 function headline(ctx) {
-  const s = ctx.now.score, wins = bestWindows(ctx.future), tz = ctx.tz;
-  const next = wins.find(w => w.end > Date.now());
+  const s = ctx.now.score, wins = bestWindows(ctx.future, ctx.astro), tz = ctx.tz;
   const lead = { Hot: "The bite should be hot", Good: "A good bite is likely", Fair: "Fair bite", Slow: "Slow bite expected" }[scoreLabel(s)];
-  const when = !next ? "" : next.start <= Date.now() ? " Right now is one of the best windows." : ` Best window: ${dayWord(next.start, tz)} ${fmtRange(next.start, next.end, tz)}.`;
+  const best = wins.find(w => w.best);
+  const when = !best ? "" : best.start <= Date.now() ? ` Now through ${fmtTime(best.end, tz)} is the best stretch.` : ` Best time: ${whenWord(best, tz)}, ${fmtRange(best.start, best.end, tz)}.`;
   const bait = ctx.phase.baits[0].replace(/\s*\(.*\)$/, "");
   return `${lead} for ${ctx.sp.name.toLowerCase()}.${when} Start with a ${bait.charAt(0).toLowerCase() + bait.slice(1)}.`;
 }
@@ -573,12 +634,11 @@ function headline(ctx) {
 function scoreTrip(spot, cond, spId, start, end) {
   const ctx = buildCtx(spot, cond, spId);
   ctx.astro = astroEvents(start - 3 * hourMs, end + 3 * hourMs, spot.lat, spot.lon);
-  const out = [];
-  for (const h of cond.hours) {
-    const a = Math.max(start, h.t), b = Math.min(end, h.t + hourMs);
-    if (b > a) out.push({ t: h.t, frac: Math.round((b - a) / hourMs * 100) / 100, score: scoreHour(ctx.sp, h, ctx).score });
-  }
-  return out;
+  const inTrip = cond.hours.filter(h => Math.min(end, h.t + hourMs) > Math.max(start, h.t));
+  return blendedScores(ctx.sp, ctx, inTrip).map((s, i) => {
+    const h = inTrip[i], a = Math.max(start, h.t), b = Math.min(end, h.t + hourMs);
+    return { t: h.t, frac: Math.round((b - a) / hourMs * 100) / 100, score: s.score };
+  });
 }
 const BANDS = ["Hot", "Good", "Fair", "Slow"];
 const MIN_TRIPS = 3, MIN_HOURS = 6, MIN_FISH = 5, SOLID_TRIPS = 10, SOLID_FISH = 15;
@@ -652,4 +712,4 @@ function skyStops({ sky, wx }) {
   return (SKIES[sky] && SKIES[sky][wx]) || DAY[wx].map(c => sky === "day" ? c : mixDark(c, DIM[sky]));
 }
 
-if (typeof module !== "undefined") module.exports = { skyStops, sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };
+if (typeof module !== "undefined") module.exports = { blendedScores, whenWord, dayParts, skyStops, sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };
