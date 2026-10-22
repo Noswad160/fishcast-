@@ -230,17 +230,17 @@ async function loadLive(spot, prev) {
     latitude: spot.lat, longitude: spot.lon,
     hourly: "temperature_2m,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,precipitation,weather_code",
     temperature_unit: "fahrenheit", wind_speed_unit: "mph", precipitation_unit: "inch",
-    timeformat: "unixtime", timezone: "auto", past_days: 7, forecast_days: 3,
+    timeformat: "unixtime", timezone: "auto", past_days: 30, forecast_days: 3, // the month of history feeds the water-temperature estimate
   });
   const j = await getJSON("https://api.open-meteo.com/v1/forecast?" + q, 8000);
   const H = j.hourly, last = {};
   const pick = (k, i) => { const v = H[k][i]; if (v != null) last[k] = v; return last[k] ?? 0; };
-  const hours = H.time.map((t, i) => ({
+  const all = H.time.map((t, i) => ({
     t: t * 1000, air: pick("temperature_2m", i), pres: pick("pressure_msl", i) * 0.02953,
     wind: pick("wind_speed_10m", i), dir: pick("wind_direction_10m", i), gust: pick("wind_gusts_10m", i),
     cloud: pick("cloud_cover", i), precip: pick("precipitation", i), code: H.weather_code ? pick("weather_code", i) : null,
   }));
-  deriveHours(hours);
+  const hours = deriveHours(all.filter(h => h.t > nowHour() - 7 * 864e5));
   // The gauge loads separately (see loadGauge) so a slow USGS reply never holds up the forecast; keep the last reading meanwhile.
   const keep = prev && prev.gauge && Date.now() - prev.gauge.at < GAUGE_MAX_AGE;
   const cond = { mode: "live", hours, tz: j.utc_offset_seconds || 0, fetchedAt: Date.now(), sst: null, wave: null,
@@ -255,14 +255,31 @@ async function loadLive(spot, prev) {
       const wv = at("wave_height"); cond.wave = wv == null ? null : wv * 3.281;
     } catch (e) { /* marine data is optional */ }
   }
-  // Rough surface-temperature estimate from recent air temps; shallow water tracks air faster.
-  const now = nowHour(), span = (spot.water === "pond" || spot.water === "river") ? 96 : 168;
-  const past = hours.filter(h => h.t <= now && h.t > now - span * hourMs);
-  if (past.length) {
-    const avg = past.reduce((a, h) => a + h.air, 0) / past.length;
-    cond.waterEst = Math.round(clamp(avg + (avg > 60 ? 2 : 0), 33, 95));
-  }
+  cond.waterEst = waterEstimate(all, nowHour(), spot.water);
   return cond;
+}
+// Surface-temperature estimate from past air temps. Water lags the air: each hour counts less the older it is,
+// fading over a few days for a pond and a couple of weeks for a big reservoir, so in fall a lake stays warmer
+// than the past week's air and in spring cooler. Sunny summer water runs a little above the air average.
+const WATER_LAG_DAYS = { pond: 2.5, river: 3, lake: 7, reservoir: 10 };
+function waterEstimate(hours, now, water) {
+  const tau = (WATER_LAG_DAYS[water] || 7) * 24 * hourMs;
+  let sum = 0, wsum = 0;
+  for (const h of hours) {
+    if (h.t > now || now - h.t > 4 * tau) continue;
+    const w = Math.exp(-(now - h.t) / tau); sum += w * h.air; wsum += w;
+  }
+  if (!wsum) return null;
+  const avg = sum / wsum;
+  return Math.round(clamp(avg + 2 * ramp(avg, 50, 65), 33, 95));
+}
+// How far your last thermometer reading was from the estimate at the time. The estimate keeps that correction
+// after the reading itself expires, fading out over a month as the season moves on.
+function readingOffset(spot) {
+  const r = spot.reading;
+  if (!r || r.water == null || r.estAt == null) return 0;
+  const age = Date.now() - (r.waterAt ?? r.at);
+  return clamp(r.water - r.estAt, -12, 12) * (1 - ramp(age, 7 * 864e5, 30 * 864e5));
 }
 /* Coordinates as people paste them: "35.2501, -91.7365" (Google Maps), "35.25010° N, 91.73650° W" (Apple Maps),
    35°15'00.4"N 91°44'11.4"W, Unicode minus signs, or a map link containing @lat,lon / ll= / q=.
@@ -394,7 +411,9 @@ function waterOf(spot, cond) {
   const g = gaugeFor(spot, cond);
   if (g) return { v: Math.round(g.f), src: `USGS · ${Math.round(g.dist)} mi`, gauge: g };
   if (cond.sst != null) return { v: Math.round(cond.sst), src: "sea surface" };
-  return { v: cond.waterEst ?? 60, src: "estimate" };
+  if (cond.waterEst == null) return { v: 60, src: "estimate" };
+  const off = readingOffset(spot);
+  return Math.abs(off) >= 0.5 ? { v: Math.round(cond.waterEst + off), src: "estimate, tuned to your reading", tuned: true } : { v: cond.waterEst, src: "estimate" };
 }
 function clarityOf(spot) { const r = spot.reading; return (r && r.clarity && Date.now() - r.at < 3 * 864e5) ? r.clarity : (spot.clarity || "stained"); }
 function tideOf(spot) { const r = spot.reading; return (r && r.tide && Date.now() - r.tideAt < 3 * hourMs) ? r.tide : ""; }
@@ -764,4 +783,4 @@ function skyStops({ sky, wx }) {
   return (SKIES[sky] && SKIES[sky][wx]) || DAY[wx].map(c => sky === "day" ? c : mixDark(c, DIM[sky]));
 }
 
-if (typeof module !== "undefined") module.exports = { loadGauge, loadLive, parseLatestOgc, trendFromOgc, usesGauge, blendedScores, whenWord, dayParts, skyStops, sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };
+if (typeof module !== "undefined") module.exports = { loadGauge, loadLive, waterEstimate, parseLatestOgc, trendFromOgc, usesGauge, blendedScores, whenWord, dayParts, skyStops, sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };

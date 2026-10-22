@@ -384,9 +384,9 @@ function renderToday() {
   else if (!isFresh(cond) && !S.loading[spot.id]) html += `<section class="banner info"><div><span class="small">${err ? esc(err) + " " : ""}Forecast from ${ago(cond.fetchedAt)}.</span></div></section>`;
 
   const sunrise = astro.sunrise.find(t => t > Date.now() - 12 * hourMs), sunset = astro.sunset.find(t => t > Date.now() - 2 * hourMs), moon = moonIllum(Date.now());
-  const est = water.src === "estimate", salt = ctx.env === "salt", tide = tideOf(spot), sky = skyCat(h);
+  const est = water.src === "estimate" || water.tuned, salt = ctx.env === "salt", tide = tideOf(spot), sky = skyCat(h);
   html += `<section class="tiles" aria-label="Conditions">
-    <button class="tile${est ? " flag" : ""}" data-act="reading">${ICONS.thermo}<span class="label">Water</span><span class="v">${water.v}°F</span><span class="s">${est ? "tap to set" : esc(water.src)}</span></button>
+    <button class="tile${est ? " flag" : ""}" data-act="reading">${ICONS.thermo}<span class="label">Water</span><span class="v">${water.v}°F</span><span class="s">${water.tuned ? "tuned estimate" : est ? "tap to set" : esc(water.src)}</span></button>
     <div class="tile">${ICONS[sky]}<span class="label">Air</span><span class="v">${Math.round(h.air)}°F</span><span class="s">${LABELS.sky[sky].toLowerCase()}</span></div>
     <div class="tile">${windIcon(h.dir)}<span class="label">Wind</span><span class="v">${Math.round(h.wind)} ${compass(h.dir)}</span><span class="s">mph · gusts ${Math.round(h.gust)}</span></div>
     <div class="tile">${gaugeIcon(h.trend3)}<span class="label">Pressure</span><span class="v">${cond.mode === "manual" ? LABELS.trend[trendCat(h)] : h.pres.toFixed(2)}</span><span class="s">${cond.mode === "manual" ? "you entered" : (LABELS.trend[trendCat(h)] || "").toLowerCase()}</span></div>
@@ -623,7 +623,7 @@ function readingSheet() {
   openSheet(`<form id="readingForm" novalidate>
     <h3 id="sheetTitle">What you see on the water</h3>
     <div class="field"><span class="label">Your water temperature reading (°F)</span>${stepper("rdWater", w.v, 1, 32)}
-      <span class="small muted">${w.src === "estimate" ? "Fishcast is estimating this from air temperatures. A thermometer reading makes the tips much better." : w.gauge ? "Leave it as is to keep using the gauge. A reading you enter is used for 3 days." : "Used for 3 days."}</span></div>
+      <span class="small muted">${w.tuned ? "Fishcast is estimating this from air temperatures, corrected by your last reading here. A fresh reading makes the tips much better." : w.src === "estimate" ? "Fishcast is estimating this from air temperatures. A thermometer reading makes the tips much better." : w.gauge ? "Leave it as is to keep using the gauge. A reading you enter is used for 3 days." : "Used for 3 days."}</span></div>
     ${gaugeHtml}
     <div class="field"><span class="label">Clarity</span><div class="chips">${["clear", "stained", "muddy"].map(c => chip("radio", "rdClarity", c, c, c === clarityOf(spot))).join("")}</div></div>
     ${salt ? `<div class="field"><span class="label">Tide right now</span><div class="chips">${[["rising", "Incoming"], ["falling", "Outgoing"], ["slack", "Slack"], ["", "Not sure"]].map(([v, l]) => chip("radio", "rdTide", v, l, v === tide)).join("")}</div>
@@ -894,7 +894,11 @@ document.addEventListener("submit", e => {
   } else if (f.id === "readingForm") {
     const r = { ...(spot.reading || {}), at: Date.now(), clarity: $('input[name="rdClarity"]:checked')?.value || spot.clarity }, inp = $("#rdWater");
     // Only a changed number counts as a thermometer reading; otherwise keep the gauge or estimate.
-    if (Number(inp.value) !== Number(inp.defaultValue)) { r.water = Number(inp.value); r.waterAt = Date.now(); }
+    if (Number(inp.value) !== Number(inp.defaultValue)) {
+      // Remember the air-temperature estimate at the time so later estimates here can be corrected by the difference.
+      const c = cachedCond(spot.id);
+      r.water = Number(inp.value); r.waterAt = Date.now(); r.estAt = c && c.mode === "live" && c.waterEst != null ? c.waterEst : null;
+    }
     if ($('input[name="rdTide"]')) { r.tide = $('input[name="rdTide"]:checked')?.value || ""; r.tideAt = Date.now(); }
     const gauge = $('input[name="rdGauge"]:checked')?.value || spot.gauge;
     if (spot.example) Object.assign(EXAMPLE_SPOT, { reading: r, gauge }); else Store.put(spot.id, { ...spot, reading: r, gauge });

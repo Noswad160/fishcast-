@@ -257,3 +257,20 @@ test("falls back to the old USGS service when the new one fails, and gives up cl
   await withFetch([[/api\.waterdata/, "fail"], [/waterservices/, legacy]], async () => assert.strictEqual((await E.loadGauge(lake)).name, "OLD RIVER"));
   await withFetch([[/api\.waterdata/, "fail"], [/waterservices/, "fail"]], async () => assert.strictEqual(await E.loadGauge(lake), null));
 });
+
+test("water estimate lags the air more for big water, and a past reading corrects it", () => {
+  // Fall: air cools from 75°F to 55°F over 30 days.
+  const now = Math.floor(Date.now() / 36e5) * 36e5, hrs = [];
+  for (let k = 720; k >= 0; k--) hrs.push({ t: now - k * 36e5, air: 55 + 20 * k / 720 });
+  const pond = E.waterEstimate(hrs, now, "pond"), res = E.waterEstimate(hrs, now, "reservoir");
+  assert.ok(pond >= 55 && pond < 60, `pond ${pond}`);
+  assert.ok(res > pond + 3, `reservoir ${res} stays warmer than pond ${pond}`);
+  assert.strictEqual(E.waterEstimate([], now, "lake"), null);
+  const cond = { mode: "live", waterEst: 60, gauge: null };
+  const spot = days => ({ water: "pond", reading: { water: 64, estAt: 59, at: Date.now() - days * 864e5, waterAt: Date.now() - days * 864e5 } });
+  assert.deepStrictEqual(E.waterOf(spot(1), cond), { v: 64, src: "your reading" });
+  assert.strictEqual(E.waterOf(spot(5), cond).v, 65); // estimate + the 5° it was off
+  assert.ok(E.waterOf(spot(5), cond).tuned);
+  assert.strictEqual(E.waterOf(spot(40), cond).v, 60); // correction has faded
+  assert.strictEqual(E.waterOf({ water: "pond", reading: { water: 64, at: Date.now() - 5 * 864e5 } }, cond).v, 60); // old readings without estAt
+});
