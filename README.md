@@ -25,7 +25,7 @@ A fishing forecast that gives tips for each spot, species and set of conditions,
 ## Accuracy notes
 - Water temperature comes from, in order:
   1. your own thermometer reading, used for 3 days;
-  2. the nearest [USGS](https://waterdata.usgs.gov) gauge within 20 miles that has reported in the last day. Rivers and lakes use it by default; ponds don't (a small pond follows the air much faster than flowing water). Either can be switched per spot from the Water tile;
+  2. the nearest [USGS](https://waterdata.usgs.gov) gauge within 20 miles that has reported in the last day, from the USGS Water Data API (with the legacy WaterServices as a fallback until it shuts down on February 22, 2027). The gauge loads in the background after the forecast, so a slow USGS reply never holds up the app. Rivers and lakes use it by default; ponds don't (a small pond follows the air much faster than flowing water). Either can be switched per spot from the Water tile;
   3. otherwise an estimate from the last 4–7 days of air temperature, which can be off by 5 °F or more.
 - The bite score is a set of rules of thumb, not a calibrated model. Your catch log is what makes it specific to your water.
 - The spot form offers freshwater types only. The saltwater species and tips are still in `engine.js` (with tide state entered by hand); show them again by removing the freshwater filter on the water-type chips in `spotSheet` (`app.js`).

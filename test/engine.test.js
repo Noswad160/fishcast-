@@ -204,3 +204,56 @@ test("small forecast updates barely move the score or the best times", () => {
   assert.ok(maxMove <= 10, `max move ${maxMove}`);
   assert.ok(winChanges <= 15, `best times changed on ${winChanges}% of updates`);
 });
+
+// ---------------------------------------------------------------- loading: the forecast never waits for USGS
+function openMeteo() {
+  const now = Math.floor(Date.now() / 36e5) * 3600, H = { time: [], temperature_2m: [], pressure_msl: [], wind_speed_10m: [], wind_direction_10m: [], wind_gusts_10m: [], cloud_cover: [], precipitation: [], weather_code: [] };
+  for (let t = now - 7 * 86400; t < now + 3 * 86400; t += 3600) { H.time.push(t); H.temperature_2m.push(60); H.pressure_msl.push(1016); H.wind_speed_10m.push(5); H.wind_direction_10m.push(180); H.wind_gusts_10m.push(9); H.cloud_cover.push(40); H.precipitation.push(0); H.weather_code.push(1); }
+  return { utc_offset_seconds: -18000, hourly: H };
+}
+const ogcLatest = (hoursAgo = 1) => ({ type: "FeatureCollection", features: [
+  { type: "Feature", geometry: { type: "Point", coordinates: [-86.6, 34.9] }, properties: { monitoring_location_id: "USGS-FAR", parameter_code: "00010", time: new Date(Date.now() - 36e5).toISOString(), value: "20", unit_of_measure: "degC" } },
+  { type: "Feature", geometry: { type: "Point", coordinates: [-86.25, 34.45] }, properties: { monitoring_location_id: "USGS-03573000", parameter_code: "00010", time: new Date(Date.now() - hoursAgo * 36e5).toISOString(), value: "16.5", unit_of_measure: "degC" } },
+] });
+const ogcHistory = { features: [[70, 18.5], [40, 17.5], [1, 16.5]].map(([h, c]) => ({ properties: { time: new Date(Date.now() - h * 36e5).toISOString(), value: String(c), unit_of_measure: "degC" } })) };
+function withFetch(routes, fn) {
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    for (const [re, reply] of routes) if (re.test(url)) {
+      if (reply === "hang") return new Promise((_, reject) => opts && opts.signal && opts.signal.addEventListener && opts.signal.addEventListener("abort", () => reject(new Error("aborted"))));
+      if (reply === "fail") return { ok: false, status: 503, json: async () => ({}) };
+      return { ok: true, status: 200, json: async () => (typeof reply === "function" ? reply() : reply) };
+    }
+    throw new Error("unexpected " + url);
+  };
+  return Promise.resolve(fn()).finally(() => { globalThis.fetch = real; });
+}
+
+test("the forecast loads without waiting for a slow gauge, keeping the last reading", async () => {
+  const prev = { gauge: { id: "x", f: 58, at: Date.now() - 36e5, dist: 3 }, gaugeCheckedAt: Date.now() - 10 * 60e3 };
+  await withFetch([[/open-meteo/, openMeteo], [/usgs/, "hang"]], async () => {
+    const t0 = Date.now(), cond = await E.loadLive({ ...lake, water: "river" }, prev);
+    assert.ok(Date.now() - t0 < 1000, `took ${Date.now() - t0} ms`);
+    assert.strictEqual(cond.gauge.f, 58);
+  });
+});
+
+test("reads the new USGS Water Data API: nearest fresh gauge, °F, 3-day change and name", async () => {
+  const g = E.parseLatestOgc(ogcLatest(), lake);
+  assert.strictEqual(g.id, "USGS-03573000"); assert.strictEqual(g.f, 61.7); assert.ok(g.dist < 5);
+  assert.strictEqual(E.parseLatestOgc(ogcLatest(30), lake), null, "stale readings are ignored");
+  const t = E.trendFromOgc(ogcHistory, g);
+  assert.strictEqual(t.change, -3.6); assert.ok(t.spanH >= 68);
+  await withFetch([[/latest-continuous/, ogcLatest()], [/collections\/continuous/, ogcHistory], [/monitoring-locations/, { properties: { monitoring_location_name: "TENNESSEE RIVER AT GUNTERSVILLE, AL" } }], [/waterservices/, "hang"]], async () => {
+    const t0 = Date.now(), r = await E.loadGauge(lake);
+    assert.ok(Date.now() - t0 < 1000, "doesn't wait for the old service");
+    assert.strictEqual(r.name, "TENNESSEE RIVER AT GUNTERSVILLE, AL"); assert.strictEqual(r.change, -3.6);
+  });
+});
+
+test("falls back to the old USGS service when the new one fails, and gives up cleanly when both do", async () => {
+  const legacy = { value: { timeSeries: [{ sourceInfo: { siteName: "OLD RIVER", siteCode: [{ value: "1" }], geoLocation: { geogLocation: { latitude: 34.45, longitude: -86.25 } } },
+    variable: { unit: { unitCode: "deg C" }, noDataValue: -999999 }, values: [{ value: [{ value: "15", dateTime: new Date(Date.now() - 36e5).toISOString() }] }] }] } };
+  await withFetch([[/api\.waterdata/, "fail"], [/waterservices/, legacy]], async () => assert.strictEqual((await E.loadGauge(lake)).name, "OLD RIVER"));
+  await withFetch([[/api\.waterdata/, "fail"], [/waterservices/, "fail"]], async () => assert.strictEqual(await E.loadGauge(lake), null));
+});

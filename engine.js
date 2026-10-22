@@ -232,8 +232,7 @@ async function loadLive(spot, prev) {
     temperature_unit: "fahrenheit", wind_speed_unit: "mph", precipitation_unit: "inch",
     timeformat: "unixtime", timezone: "auto", past_days: 7, forecast_days: 3,
   });
-  const gaugeP = envOf(spot) === "fresh" ? loadGauge(spot).catch(() => null) : Promise.resolve(null);
-  const j = await getJSON("https://api.open-meteo.com/v1/forecast?" + q);
+  const j = await getJSON("https://api.open-meteo.com/v1/forecast?" + q, 8000);
   const H = j.hourly, last = {};
   const pick = (k, i) => { const v = H[k][i]; if (v != null) last[k] = v; return last[k] ?? 0; };
   const hours = H.time.map((t, i) => ({
@@ -242,9 +241,10 @@ async function loadLive(spot, prev) {
     cloud: pick("cloud_cover", i), precip: pick("precipitation", i), code: H.weather_code ? pick("weather_code", i) : null,
   }));
   deriveHours(hours);
-  let gauge = await gaugeP;
-  if (!gauge && prev && prev.gauge && Date.now() - prev.gauge.at < GAUGE_MAX_AGE) gauge = prev.gauge; // USGS didn't answer this time
-  const cond = { mode: "live", hours, tz: j.utc_offset_seconds || 0, fetchedAt: Date.now(), sst: null, wave: null, gauge };
+  // The gauge loads separately (see loadGauge) so a slow USGS reply never holds up the forecast; keep the last reading meanwhile.
+  const keep = prev && prev.gauge && Date.now() - prev.gauge.at < GAUGE_MAX_AGE;
+  const cond = { mode: "live", hours, tz: j.utc_offset_seconds || 0, fetchedAt: Date.now(), sst: null, wave: null,
+    gauge: keep ? prev.gauge : null, gaugeCheckedAt: keep ? prev.gaugeCheckedAt || 0 : 0 };
   if (envOf(spot) === "salt") {
     try {
       const mq = new URLSearchParams({ latitude: spot.lat, longitude: spot.lon, hourly: "sea_surface_temperature,wave_height", temperature_unit: "fahrenheit", timeformat: "unixtime", timezone: "auto", forecast_days: 2 });
@@ -325,11 +325,60 @@ function parseGauges(json, spot, now = Date.now()) {
   found.sort((a, b) => a.dist - b.dist);
   return found[0] && found[0].dist <= GAUGE_MAX_MI ? found[0] : null;
 }
-async function loadGauge(spot) {
+/* USGS Water Data API (api.waterdata.usgs.gov), which replaces WaterServices: the legacy service degrades from
+   November 2026 and shuts down on February 22, 2027. Responses are GeoJSON features whose properties carry
+   monitoring_location_id, parameter_code, time, value and unit_of_measure. */
+const OGC = "https://api.waterdata.usgs.gov/ogcapi/v0/collections/";
+const toF = (v, unit) => /F/i.test(unit || "") ? v : v * 9 / 5 + 32;
+// Nearest gauge with a reading in the last day, from a latest-continuous response.
+function parseLatestOgc(json, spot, now = Date.now()) {
+  const seen = new Set(), found = [];
+  for (const ft of (json && json.features) || []) {
+    const p = ft.properties || {}, c = ft.geometry && ft.geometry.coordinates, id = p.monitoring_location_id;
+    if (!c || !id || seen.has(id) || (p.parameter_code && p.parameter_code !== "00010")) continue;
+    const t = Date.parse(p.time), v = Number(p.value), f = toF(v, p.unit_of_measure);
+    if (!isFinite(t) || !isFinite(v) || now - t > GAUGE_MAX_AGE || f < 28 || f > 105) continue;
+    seen.add(id);
+    found.push({ id, name: p.monitoring_location_name || String(id).replace(/^USGS-/, "USGS gauge "), lat: c[1], lon: c[0],
+      dist: milesBetween(spot, { lat: c[1], lon: c[0] }), at: t, f: Math.round(f * 10) / 10, change: 0, spanH: 0 });
+  }
+  found.sort((a, b) => a.dist - b.dist);
+  return found[0] && found[0].dist <= GAUGE_MAX_MI ? found[0] : null;
+}
+// 3-day change from a continuous response for one gauge.
+function trendFromOgc(json, g) {
+  const vals = ((json && json.features) || []).map(ft => ft.properties || {})
+    .map(p => ({ t: Date.parse(p.time), f: toF(Number(p.value), p.unit_of_measure) })).filter(v => isFinite(v.t) && isFinite(v.f) && v.f > 28 && v.f < 105)
+    .sort((a, b) => a.t - b.t);
+  if (vals.length < 2) return g;
+  const last = vals[vals.length - 1], first = vals.find(v => v.t >= last.t - 72 * hourMs) || vals[0];
+  return { ...g, change: Math.round((last.f - first.f) * 10) / 10, spanH: Math.round((last.t - first.t) / hourMs) };
+}
+async function loadGaugeOgc(spot, box) {
+  const g = parseLatestOgc(await getJSON(`${OGC}latest-continuous/items?f=json&bbox=${box}&parameter_code=00010&limit=200`, 20000), spot);
+  if (!g) return null;
+  const id = encodeURIComponent(g.id);
+  const [hist, loc] = await Promise.all([
+    getJSON(`${OGC}continuous/items?f=json&monitoring_location_id=${id}&parameter_code=00010&time=P3D&limit=1000`, 8000).catch(() => null),
+    getJSON(`${OGC}monitoring-locations/items/${id}?f=json`, 6000).catch(() => null),
+  ]);
+  const name = loc && loc.properties && loc.properties.monitoring_location_name;
+  return trendFromOgc(hist, name ? { ...g, name } : g);
+}
+async function loadGaugeLegacy(spot, box) {
+  const j = await getJSON(`https://waterservices.usgs.gov/nwis/iv/?format=json&bBox=${box}&parameterCd=00010&siteStatus=active&period=P3D`, 20000);
+  return parseGauges(j, spot);
+}
+// Ask both services at once and take the first that finds a gauge; null if neither does. This runs in the
+// background, after the forecast is on screen, so a slow USGS reply gets plenty of time.
+function loadGauge(spot) {
   const dLat = GAUGE_MAX_MI / 69, dLon = dLat / Math.max(0.2, Math.cos(spot.lat * RAD));
   const box = [spot.lon - dLon, spot.lat - dLat, spot.lon + dLon, spot.lat + dLat].map(v => v.toFixed(4)).join(",");
-  const j = await getJSON(`https://waterservices.usgs.gov/nwis/iv/?format=json&bBox=${box}&parameterCd=00010&siteStatus=active&period=P3D`, 12000);
-  return parseGauges(j, spot);
+  const tries = [loadGaugeOgc(spot, box), loadGaugeLegacy(spot, box)];
+  return new Promise(resolve => {
+    let left = tries.length;
+    for (const p of tries) p.then(g => { if (g) resolve(g); else if (--left === 0) resolve(null); }, () => { if (--left === 0) resolve(null); });
+  });
 }
 // USGS temperature gauges are on rivers and streams. Use one by default for rivers and lakes, but not for ponds:
 // a small pond warms and cools with the air far faster than flowing water. A spot can turn it on ("on") or off ("off").
@@ -715,4 +764,4 @@ function skyStops({ sky, wx }) {
   return (SKIES[sky] && SKIES[sky][wx]) || DAY[wx].map(c => sky === "day" ? c : mixDark(c, DIM[sky]));
 }
 
-if (typeof module !== "undefined") module.exports = { usesGauge, blendedScores, whenWord, dayParts, skyStops, sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };
+if (typeof module !== "undefined") module.exports = { loadGauge, loadLive, parseLatestOgc, trendFromOgc, usesGauge, blendedScores, whenWord, dayParts, skyStops, sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };

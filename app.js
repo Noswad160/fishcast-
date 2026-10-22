@@ -40,7 +40,7 @@ const S = {
   tab: LS.get("fishcast.tab", "today"), spotId: LS.get("fishcast.spot", null), speciesId: LS.get("fishcast.species", null),
   manual: LS.get("fishcast.manual", { air: 68, water: 64, wind: 8, windDir: "SW", sky: "partly", trend: "steady" }),
   spotsMode: LS.get("fishcast.spotsMode", "list"),
-  conds: {}, loading: {}, errors: {}, tried: {}, warming: false,
+  conds: {}, loading: {}, errors: {}, tried: {}, warming: false, gaugeLoading: {}, gaugeTried: {},
 };
 const ownSpots = () => Store.list("spot").sort((a, b) => a.name.localeCompare(b.name));
 const spots = () => { const own = ownSpots(); return own.length ? own : [EXAMPLE_SPOT]; };
@@ -60,7 +60,7 @@ function cachedCond(id) {
 const isFresh = c => c && c.mode === "live" && Date.now() - c.fetchedAt < FRESH_MS;
 function ensureCond(spot, force) {
   const c = cachedCond(spot.id);
-  if (!force && isFresh(c)) return Promise.resolve(c);
+  if (!force && isFresh(c)) { refreshGauge(spot); return Promise.resolve(c); }
   if (S.loading[spot.id]) return S.loading[spot.id];
   S.tried[spot.id] = Date.now();
   const p = (async () => {
@@ -68,6 +68,7 @@ function ensureCond(spot, force) {
       const live = await loadLive(spot, c);
       S.conds[spot.id] = live; S.errors[spot.id] = "";
       if (!spot.example) LS.set("fishcast.cond." + spot.id, live);
+      refreshGauge(spot, force);
       return live;
     } catch (e) {
       S.errors[spot.id] = navigator.onLine === false ? "You're offline." : "Couldn't reach the weather service.";
@@ -77,6 +78,22 @@ function ensureCond(spot, force) {
   })();
   S.loading[spot.id] = p;
   return p;
+}
+// The gauge reading loads after the forecast and fills in when it arrives. Gauges report every 15-60 minutes,
+// so check at most every 30 minutes (5 after a failed try).
+function refreshGauge(spot, force) {
+  const c = cachedCond(spot.id);
+  if (!c || c.mode !== "live" || envOf(spot) !== "fresh" || S.gaugeLoading[spot.id]) return;
+  if (!force && Date.now() - (c.gaugeCheckedAt || 0) < 30 * 60e3) return;
+  if (Date.now() - (S.gaugeTried[spot.id] || 0) < (force ? 60e3 : 5 * 60e3)) return;
+  S.gaugeLoading[spot.id] = true; S.gaugeTried[spot.id] = Date.now();
+  loadGauge(spot).then(g => {
+    const cur = S.conds[spot.id];
+    if (!cur || cur.mode !== "live") return;
+    if (g) { cur.gauge = g; cur.gaugeCheckedAt = Date.now(); }
+    if (!spot.example) LS.set("fishcast.cond." + spot.id, cur);
+    if (g) render();
+  }).finally(() => { delete S.gaugeLoading[spot.id]; });
 }
 function refreshCurrent(force) {
   const spot = curSpot();

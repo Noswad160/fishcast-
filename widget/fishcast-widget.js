@@ -39,7 +39,7 @@ async function loadEngine() {
     if (code.includes("function buildCtx")) fm.writeString(path, code);
   } catch (e) { /* offline: use the saved copy */ }
   if (!fm.fileExists(path)) throw new Error("Open the widget once with a connection to download Fishcast.");
-  return new Function(fm.readString(path) + "\nreturn { loadLive, buildCtx, headline, bestWindows, whenWord, fmtTime, scoreLabel, sceneOf, skyStops, fmtRange, dayWord, speciesFor, parseCoords, compass, SPECIES, WATER_TYPES };")();
+  return new Function(fm.readString(path) + "\nreturn { loadLive, loadGauge, buildCtx, headline, bestWindows, whenWord, fmtTime, scoreLabel, sceneOf, skyStops, fmtRange, dayWord, speciesFor, parseCoords, compass, SPECIES, WATER_TYPES };")();
 }
 
 function parseParam(E) {
@@ -56,6 +56,10 @@ async function loadCond(E, spot) {
   const prev = fm.fileExists(path) ? JSON.parse(fm.readString(path)) : null;
   try {
     const cond = await E.loadLive(spot, prev);
+    if (E.WATER_TYPES[spot.water] && E.WATER_TYPES[spot.water].env === "fresh") {
+      const g = await Promise.race([E.loadGauge(spot), new Promise(r => setTimeout(() => r(null), 8000))]);
+      if (g) { cond.gauge = g; cond.gaugeCheckedAt = Date.now(); }
+    }
     fm.writeString(path, JSON.stringify(cond));
     return { cond, stale: false };
   } catch (e) {
