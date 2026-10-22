@@ -101,16 +101,18 @@ function refreshCurrent(force) {
   ensureCond(spot, force).then(render);
   $("#refreshBtn").classList.add("spin");
 }
-// Load forecasts for every spot, one at a time, so the Spots tab can rank them.
-async function warmSpots() {
+// Load forecasts for every spot, one at a time, so the Spots tab can rank them. force reloads even fresh ones.
+const needsLoad = s => !isFresh(cachedCond(s.id)) && Date.now() - (S.tried[s.id] || 0) >= 60e3;
+async function warmSpots(force) {
   if (S.warming) return; S.warming = true;
+  if (force) $("#refreshBtn").classList.add("spin");
   try {
     for (const s of spots()) {
-      if (isFresh(cachedCond(s.id)) || Date.now() - (S.tried[s.id] || 0) < 60e3) continue;
-      await ensureCond(s);
+      if (!force && !needsLoad(s)) continue;
+      await ensureCond(s, force);
       if (S.tab === "spots") render();
     }
-  } finally { S.warming = false; }
+  } finally { S.warming = false; $("#refreshBtn").classList.remove("spin"); }
 }
 
 /* ---------------------------------------------------------------- trips */
@@ -281,7 +283,7 @@ function render() {
   $("#spotName").textContent = spot.name;
   $$(".navbtn").forEach(b => b.dataset.tab === S.tab ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
   $("#fab").hidden = S.tab === "spots";
-  $("#refreshBtn").classList.toggle("spin", !!S.loading[spot.id]);
+  $("#refreshBtn").classList.toggle("spin", !!S.loading[spot.id] || (S.tab === "spots" && S.warming));
   if (!(S.tab === "spots" && S.spotsMode === "map")) { dropSpotsMap(); delete view.dataset.screen; }
   // Redrawing resets sideways-scrolling rows (species chips, best times); keep them where they were.
   const rows = $$(".chipbar, .hscroll").map(el => [el.className, el.scrollLeft]);
@@ -446,7 +448,9 @@ function spotScore(spot) {
 function renderSpots() {
   const own = ownSpots(), list = spots().map(s => ({ s, score: spotScore(s) }));
   list.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
-  const best = list.length > 1 && list[0].score != null && list[0].score > (list[1].score ?? -1) ? list[0].s.id : null;
+  // Only name a best spot once every spot has a current forecast, so a stale score can't win or lose it.
+  const pending = spots().some(s => S.loading[s.id] || needsLoad(s));
+  const best = !pending && list.length > 1 && list[0].score != null && list[0].score > (list[1].score ?? -1) ? list[0].s.id : null;
   // The map keeps its own state; later renders (forecasts arriving) only refresh its pins.
   if (S.spotsMode === "map" && view.dataset.screen === "spotsmap" && spotsMap && $("#spotsMap")) { updateSpotMarkers(false); warmSpots(); return; }
   let html = waterband(`<div class="row" style="justify-content:space-between"><h2>Your spots</h2><button class="btn" data-act="newSpot">${ICON_PIN}Add spot</button></div>
@@ -734,7 +738,7 @@ document.addEventListener("click", async e => {
     case "chooseSpot": selectSpot(id); closeSheet(); go("today"); break;
     case "openSpot": selectSpot(id); go("today"); break;
     case "species": S.speciesId = id; remember(); render(); break;
-    case "refresh": S.tried[curSpot().id] = 0; refreshCurrent(true); break;
+    case "refresh": if (S.tab === "spots") warmSpots(true); else { S.tried[curSpot().id] = 0; refreshCurrent(true); } break;
     case "newSpot": spotSheet(null); break;
     case "editSpot": spotSheet(Store.list("spot").find(s => s.id === id)); break;
     case "logCatch": logSheet("catch"); break;
@@ -905,7 +909,8 @@ document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   if (!$("#mapView").hidden) closeMapPicker(); else if (!$("#sheet").hidden) closeSheet();
 });
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.tab !== "spots") refreshCurrent(false); });
+// Coming back to the app: rescore for the current hour and reload stale forecasts (all spots on the Spots tab).
+document.addEventListener("visibilitychange", () => { if (document.visibilityState !== "visible") return; if (S.tab === "spots") render(); else refreshCurrent(false); });
 window.addEventListener("online", () => { S.tried = {}; refreshCurrent(false); });
 
 /* ---------------------------------------------------------------- boot */
