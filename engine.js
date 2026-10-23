@@ -255,15 +255,18 @@ async function loadLive(spot, prev) {
       const wv = at("wave_height"); cond.wave = wv == null ? null : wv * 3.281;
     } catch (e) { /* marine data is optional */ }
   }
+  cond.waterEsts = waterEstimates(all, nowHour());
   cond.waterEst = waterEstimate(all, nowHour(), spot.water);
   return cond;
 }
 // Surface-temperature estimate from past air temps. Water lags the air: each hour counts less the older it is,
 // fading over a few days for a pond and a couple of weeks for a big reservoir, so in fall a lake stays warmer
 // than the past week's air and in spring cooler. Sunny summer water runs a little above the air average.
-const WATER_LAG_DAYS = { pond: 2.5, river: 3, lake: 7, reservoir: 10 };
-function waterEstimate(hours, now, water) {
-  const tau = (WATER_LAG_DAYS[water] || 7) * 24 * hourMs;
+// This is the simplest form of the air2water lake model (Piccolroaz et al. 2013); your readings calibrate it.
+const WATER_LAG_DAYS = { pond: 2.5, river: 3, lake: 7, reservoir: 10 }, LAGS = [1.5, 2.5, 4, 7, 10, 14];
+const lagFor = water => WATER_LAG_DAYS[water] || 7;
+function laggedAir(hours, now, lagDays) {
+  const tau = lagDays * 24 * hourMs;
   let sum = 0, wsum = 0;
   for (const h of hours) {
     if (h.t > now || now - h.t > 4 * tau) continue;
@@ -271,15 +274,46 @@ function waterEstimate(hours, now, water) {
   }
   if (!wsum) return null;
   const avg = sum / wsum;
-  return Math.round(clamp(avg + 2 * ramp(avg, 50, 65), 33, 95));
+  return clamp(avg + 2 * ramp(avg, 50, 65), 33, 95);
 }
-// How far your last thermometer reading was from the estimate at the time. The estimate keeps that correction
-// after the reading itself expires, fading out over a month as the season moves on.
-function readingOffset(spot) {
-  const r = spot.reading;
-  if (!r || r.water == null || r.estAt == null) return 0;
-  const age = Date.now() - (r.waterAt ?? r.at);
-  return clamp(r.water - r.estAt, -12, 12) * (1 - ramp(age, 7 * 864e5, 30 * 864e5));
+function waterEstimate(hours, now, water, lagDays = lagFor(water)) {
+  const v = laggedAir(hours, now, lagDays);
+  return v == null ? null : Math.round(v);
+}
+// The estimate for every lag the calibration can choose from, so a reading can be compared against each.
+function waterEstimates(hours, now) {
+  const out = {};
+  for (const lag of LAGS) { const v = laggedAir(hours, now, lag); if (v != null) out[lag] = Math.round(v * 10) / 10; }
+  return out;
+}
+// Fit the estimate to your thermometer readings at a spot (spot.cal: [{ t, water, est: { lag: estimate } }]).
+// One reading sets a correction (how far off the estimate was); four or more over 10+ days also pick how fast
+// this water follows the air. Recent readings count most, and the correction fades if you stop taking them.
+// sd is how far the fitted estimate typically sits from your readings (needs 3).
+function waterCalibration(spot) {
+  const now = Date.now(), pts = (spot.cal || []).filter(p => p && p.est && p.water != null && now - p.t < 365 * 864e5);
+  const r = spot.reading; // a reading saved before the calibration list existed
+  if (!pts.length && r && r.water != null && r.estAt != null) pts.push({ t: r.waterAt ?? r.at, water: r.water, est: { [lagFor(spot.water)]: r.estAt } });
+  if (!pts.length) return null;
+  const newest = Math.max(...pts.map(p => p.t)), oldest = Math.min(...pts.map(p => p.t));
+  const w = p => Math.exp(-(newest - p.t) / (60 * 864e5));
+  const fit = lag => {
+    const use = pts.filter(p => p.est[lag] != null);
+    if (!use.length) return null;
+    let W = 0, S = 0, V = 0;
+    for (const p of use) { W += w(p); S += w(p) * (p.water - p.est[lag]); }
+    const off = S / W;
+    for (const p of use) V += w(p) * (p.water - p.est[lag] - off) ** 2;
+    const n = use.length;
+    return { lag, off, n, sd: n >= 3 ? Math.sqrt(V / W * n / (n - 1)) : null };
+  };
+  let best = fit(lagFor(spot.water));
+  if (pts.length >= 4 && newest - oldest >= 10 * 864e5) {
+    for (const lag of LAGS) { const f = fit(lag); if (f && f.n === pts.length && (!best || best.sd == null || f.sd < best.sd)) best = f; }
+  }
+  if (!best) return null;
+  best.off = clamp(best.off, -12, 12) * (1 - ramp(now - newest, 14 * 864e5, 60 * 864e5));
+  return best;
 }
 /* Coordinates as people paste them: "35.2501, -91.7365" (Google Maps), "35.25010° N, 91.73650° W" (Apple Maps),
    35°15'00.4"N 91°44'11.4"W, Unicode minus signs, or a map link containing @lat,lon / ll= / q=.
@@ -411,9 +445,10 @@ function waterOf(spot, cond) {
   const g = gaugeFor(spot, cond);
   if (g) return { v: Math.round(g.f), src: `USGS · ${Math.round(g.dist)} mi`, gauge: g };
   if (cond.sst != null) return { v: Math.round(cond.sst), src: "sea surface" };
-  if (cond.waterEst == null) return { v: 60, src: "estimate" };
-  const off = readingOffset(spot);
-  return Math.abs(off) >= 0.5 ? { v: Math.round(cond.waterEst + off), src: "estimate, tuned to your reading", tuned: true } : { v: cond.waterEst, src: "estimate" };
+  const cal = waterCalibration(spot), base = cal && cond.waterEsts && cond.waterEsts[cal.lag] != null ? cond.waterEsts[cal.lag] : cond.waterEst;
+  if (base == null) return { v: 60, src: "estimate" };
+  const v = Math.round(clamp(base + (cal ? cal.off : 0), 33, 95));
+  return cal && (v !== cond.waterEst || cal.n > 1) ? { v, src: "estimate, tuned to your readings", tuned: true, cal } : { v, src: "estimate", cal };
 }
 function clarityOf(spot) { const r = spot.reading; return (r && r.clarity && Date.now() - r.at < 3 * 864e5) ? r.clarity : (spot.clarity || "stained"); }
 function tideOf(spot) { const r = spot.reading; return (r && r.tide && Date.now() - r.tideAt < 3 * hourMs) ? r.tide : ""; }
@@ -783,4 +818,4 @@ function skyStops({ sky, wx }) {
   return (SKIES[sky] && SKIES[sky][wx]) || DAY[wx].map(c => sky === "day" ? c : mixDark(c, DIM[sky]));
 }
 
-if (typeof module !== "undefined") module.exports = { loadGauge, loadLive, waterEstimate, parseLatestOgc, trendFromOgc, usesGauge, blendedScores, whenWord, dayParts, skyStops, sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };
+if (typeof module !== "undefined") module.exports = { loadGauge, loadLive, waterEstimate, waterEstimates, waterCalibration, parseLatestOgc, trendFromOgc, usesGauge, blendedScores, whenWord, dayParts, skyStops, sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };

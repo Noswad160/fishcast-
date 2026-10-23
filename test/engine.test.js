@@ -271,6 +271,30 @@ test("water estimate lags the air more for big water, and a past reading correct
   assert.deepStrictEqual(E.waterOf(spot(1), cond), { v: 64, src: "your reading" });
   assert.strictEqual(E.waterOf(spot(5), cond).v, 65); // estimate + the 5° it was off
   assert.ok(E.waterOf(spot(5), cond).tuned);
-  assert.strictEqual(E.waterOf(spot(40), cond).v, 60); // correction has faded
+  assert.strictEqual(E.waterOf(spot(70), cond).v, 60); // correction has faded
   assert.strictEqual(E.waterOf({ water: "pond", reading: { water: 64, at: Date.now() - 5 * 864e5 } }, cond).v, 60); // old readings without estAt
+});
+
+test("readings calibrate the estimate: the offset and how fast the water follows the air", () => {
+  // A "pond" that behaves like a lake (7-day lag) and runs 3°F warm, with ±1°F thermometer noise.
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const now = Math.floor(Date.now() / 36e5) * 36e5, hrs = [];
+  for (let k = 60 * 24; k >= 0; k--) {
+    const t = now - k * 36e5, d = k / 24;
+    hrs.push({ t, air: 62 + 12 * Math.sin(d / 9) + 6 * Math.sin(d / 2.3) + 8 * Math.sin(2 * Math.PI * d) });
+  }
+  const truth = t => E.waterEstimate(hrs, t, "lake", 7) + 3;
+  const cal = [];
+  for (let d = 30; d >= 2; d -= 4) {
+    const t = now - d * 864e5;
+    cal.push({ t, water: Math.round(truth(t) + (rnd() * 2 - 1)), est: E.waterEstimates(hrs, t) });
+  }
+  const spot = { water: "pond", cal }, cond = { mode: "live", gauge: null, waterEst: E.waterEstimate(hrs, now, "pond"), waterEsts: E.waterEstimates(hrs, now) };
+  const fit = E.waterCalibration(spot), w = E.waterOf(spot, cond);
+  assert.ok(Math.abs(w.v - truth(now)) <= 2, `tuned ${w.v} vs actual ${truth(now)}`);
+  assert.ok(fit.sd < 2, `sd ${fit.sd}`);
+  assert.ok(fit.lag >= 4 && fit.lag <= 10, `lag ${fit.lag}`);
+  assert.ok(w.tuned && w.src.includes("tuned"));
+  // Without readings the same spot is plain estimate, and further off.
+  assert.ok(Math.abs(E.waterOf({ water: "pond" }, cond).v - truth(now)) > Math.abs(w.v - truth(now)));
 });

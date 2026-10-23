@@ -612,6 +612,12 @@ function fillEnvBoxes(selSpecies, selStructs) {
 }
 const checked = name => $$(`input[name="${name}"]:checked`).map(x => x.value);
 
+// How close the estimate has been to your readings at this spot, once there are enough to say.
+function calLine(spot) {
+  const cal = waterCalibration(spot);
+  if (!cal || cal.sd == null) return "";
+  return `<span class="small muted">Estimate accuracy here: typically within ±${Math.max(1, Math.round(cal.sd))}°F of your ${cal.n} readings.</span>`;
+}
 function readingSheet() {
   const spot = curSpot(), cond = cachedCond(spot.id), salt = envOf(spot) === "salt";
   const w = cond ? waterOf(spot, cond) : { v: 60, src: "estimate" }, tide = tideOf(spot), g = cond && cond.gauge, tz = cond ? cond.tz : deviceTz();
@@ -623,7 +629,8 @@ function readingSheet() {
   openSheet(`<form id="readingForm" novalidate>
     <h3 id="sheetTitle">What you see on the water</h3>
     <div class="field"><span class="label">Your water temperature reading (°F)</span>${stepper("rdWater", w.v, 1, 32)}
-      <span class="small muted">${w.tuned ? "Fishcast is estimating this from air temperatures, corrected by your last reading here. A fresh reading makes the tips much better." : w.src === "estimate" ? "Fishcast is estimating this from air temperatures. A thermometer reading makes the tips much better." : w.gauge ? "Leave it as is to keep using the gauge. A reading you enter is used for 3 days." : "Used for 3 days."}</span></div>
+      <span class="small muted">${w.tuned ? "Fishcast is estimating this from air temperatures, fitted to your readings here. Each new reading makes it more accurate." : w.src === "estimate" ? "Fishcast is estimating this from air temperatures. A thermometer reading makes the tips much better, and teaches the estimate for this spot." : w.gauge ? "Leave it as is to keep using the gauge. A reading you enter is used for 3 days." : "Used for 3 days."}</span>
+      ${calLine(spot)}</div>
     ${gaugeHtml}
     <div class="field"><span class="label">Clarity</span><div class="chips">${["clear", "stained", "muddy"].map(c => chip("radio", "rdClarity", c, c, c === clarityOf(spot))).join("")}</div></div>
     ${salt ? `<div class="field"><span class="label">Tide right now</span><div class="chips">${[["rising", "Incoming"], ["falling", "Outgoing"], ["slack", "Slack"], ["", "Not sure"]].map(([v, l]) => chip("radio", "rdTide", v, l, v === tide)).join("")}</div>
@@ -892,16 +899,18 @@ document.addEventListener("submit", e => {
     closeSheet(); buzz(); render();
     toast(hours.length ? `Trip saved: ${fmtDur(end - start)}, ${fish} fish` : "Trip saved. It's too long ago to grade against the forecast.", { label: "Undo", fn: () => { Store.del(tid); render(); } });
   } else if (f.id === "readingForm") {
+    let cal = spot.cal;
     const r = { ...(spot.reading || {}), at: Date.now(), clarity: $('input[name="rdClarity"]:checked')?.value || spot.clarity }, inp = $("#rdWater");
     // Only a changed number counts as a thermometer reading; otherwise keep the gauge or estimate.
     if (Number(inp.value) !== Number(inp.defaultValue)) {
       // Remember the air-temperature estimate at the time so later estimates here can be corrected by the difference.
       const c = cachedCond(spot.id);
-      r.water = Number(inp.value); r.waterAt = Date.now(); r.estAt = c && c.mode === "live" && c.waterEst != null ? c.waterEst : null;
+      r.water = Number(inp.value); r.waterAt = Date.now();
+      if (c && c.mode === "live" && c.waterEsts) cal = (spot.cal || []).concat({ t: Date.now(), water: r.water, est: c.waterEsts }).slice(-30);
     }
     if ($('input[name="rdTide"]')) { r.tide = $('input[name="rdTide"]:checked')?.value || ""; r.tideAt = Date.now(); }
     const gauge = $('input[name="rdGauge"]:checked')?.value || spot.gauge;
-    if (spot.example) Object.assign(EXAMPLE_SPOT, { reading: r, gauge }); else Store.put(spot.id, { ...spot, reading: r, gauge });
+    if (spot.example) Object.assign(EXAMPLE_SPOT, { reading: r, gauge, cal }); else Store.put(spot.id, { ...spot, reading: r, gauge, cal });
     closeSheet(); buzz(); render(); toast("Tips updated");
   } else if (f.id === "manualForm") {
     S.manual = { air: Number($("#mAir").value), water: Number($("#mWater").value), wind: Number($("#mWind").value), windDir: $('input[name="mDir"]:checked')?.value || "SW", sky: $('input[name="mSky"]:checked')?.value || "partly", trend: $('input[name="mTrend"]:checked')?.value || "steady" };
