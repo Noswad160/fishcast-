@@ -21,6 +21,7 @@ Push to `main` → `.github/workflows/pages.yml` runs the tests and publishes th
 ## Data (all on the phone, in localStorage)
 - `fishcast.v1`: `{ id: item }` where items have `kind`: `"spot"`, `"catch"` or `"trip"`.
   - spot: `name, lat, lon, water (lake|reservoir|pond|river), clarity, species[], structures[], notes, reading, gauge ("on"|"off"|unset)`
+    and `cal [{t, water, est: {lagDays: estimate}}]`, the thermometer readings that calibrate the water estimate (last 30)
   - catch: `spotId, t, species, lure, length, depth, count (0 = old "no bites" entry), snap (conditions + score), tripId`
   - trip: `spotId, species, start, end (null while running), hours [{t, frac, score}], fish (past trips), past`
 - `fishcast.cond.<spotId>`: cached forecast. UI preferences under other `fishcast.*` keys.
