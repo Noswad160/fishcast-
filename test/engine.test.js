@@ -321,3 +321,10 @@ test("several spots load in one forecast request; the month of air history loads
     assert.strictEqual(again.waterEst, ca.waterEst);
   } finally { globalThis.fetch = real; }
 });
+
+test("species offered match the area: no northern pike around Searcy, but up north", () => {
+  assert.ok(!E.livesAt("pike", 35.25) && E.livesAt("pike", 45) && E.livesAt("pike", null));
+  assert.ok(E.livesAt("lmb", 35.25) && E.livesAt("trout", 35.25));
+  assert.ok(!E.speciesFor({ water: "lake", lat: 35.25 }).includes("pike"));
+  assert.deepStrictEqual(E.speciesFor({ water: "lake", lat: 35.25, species: ["pike"] }), ["pike"], "a spot's own picks are kept");
+});

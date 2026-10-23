@@ -131,7 +131,8 @@ const SPECIES = {
     { min: 80, name: "Summer", where: "Shade of docks, weed edges and deeper brush. Shallow early and late.", baits: ["Worm on a small hook near bottom", "Small jig", "Popper at dusk"], how: "Bigger fish sit deeper than the small ones you see." },
     { name: "Fall", where: "Weed edges and docks; bigger fish move a little deeper.", baits: ["Worm", "Small jig", "Small spinner"], how: "Fish the remaining green weeds." },
   ]},
-  pike: { name: "Northern pike", env: "fresh", opt: [55, 70], live: [33, 82], lowLight: .4, night: 0, phases: [
+  // Northern pike live in northern lakes, not in Arkansas or the South (minLat).
+  pike: { name: "Northern pike", env: "fresh", minLat: 37, opt: [55, 70], live: [33, 82], lowLight: .4, night: 0, phases: [
     { max: 45, name: "Cold water", where: "Shallow dark-bottom back bays warm first at ice-out. In winter, deep weed edges and drop-offs.", baits: ["Dead bait (smelt, herring) on a quick-strike rig", "Suspending jerkbait", "Large swimbait, slow"], how: "Slow presentations. Big fish are caught on dead bait in cold water." },
     { max: 55, season: "warming", name: "Postspawn shallow", where: "Shallow dark-bottom bays and emerging weeds.", baits: ["Small spoon", "Suspending jerkbait", "Swimbait"], how: "Fish the warmest bays on sunny afternoons." },
     { min: 72, name: "Summer", where: "Big fish go deep to cooler water: deep weed edges and rock humps.", baits: ["Large spinnerbait slow-rolled deep", "Deep crankbait", "Big swimbait"], how: "Small pike stay shallow; go deeper for size." },
@@ -718,8 +719,10 @@ function similarity(a, b, salt) {
 
 
 /* ---------------------------------------------------------------- putting it together */
+// Whether a species lives near this latitude (unknown location: assume it does).
+function livesAt(k, lat) { const m = SPECIES[k].minLat; return lat == null || m == null || lat >= m; }
 function speciesFor(spot) {
-  return (spot.species && spot.species.length) ? spot.species : Object.keys(SPECIES).filter(k => SPECIES[k].env === envOf(spot));
+  return (spot.species && spot.species.length) ? spot.species : Object.keys(SPECIES).filter(k => SPECIES[k].env === envOf(spot) && livesAt(k, spot.lat));
 }
 // Synthetic conditions from what the angler reports; what they see is assumed to hold for about half a day.
 function manualCond(M) {
@@ -841,4 +844,4 @@ function skyStops({ sky, wx }) {
   return (SKIES[sky] && SKIES[sky][wx]) || DAY[wx].map(c => sky === "day" ? c : mixDark(c, DIM[sky]));
 }
 
-if (typeof module !== "undefined") module.exports = { loadGauge, loadLive, loadLiveMany, waterEstimate, waterEstimates, waterCalibration, parseLatestOgc, trendFromOgc, usesGauge, blendedScores, whenWord, dayParts, skyStops, sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };
+if (typeof module !== "undefined") module.exports = { livesAt, speciesFor, loadGauge, loadLive, loadLiveMany, waterEstimate, waterEstimates, waterCalibration, parseLatestOgc, trendFromOgc, usesGauge, blendedScores, whenWord, dayParts, skyStops, sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };

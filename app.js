@@ -557,7 +557,7 @@ function logSheet(kind) {
       <button class="btn big" type="submit">Save trip</button></form>`);
     return;
   }
-  const spId = curSpecies(spot), list = Object.keys(SPECIES).filter(k => SPECIES[k].env === envOf(spot));
+  const spId = curSpecies(spot), list = Object.keys(SPECIES).filter(k => SPECIES[k].env === envOf(spot) && livesAt(k, spot.lat));
   const mine = speciesFor(spot), order = mine.concat(list.filter(k => !mine.includes(k)));
   const recent = [];
   for (const e of entries().filter(e => e.spotId === spot.id && e.lure).sort((a, b) => b.t - a.t)) if (!recent.includes(e.lure)) recent.push(e.lure);
@@ -618,10 +618,13 @@ function spotSheet(spot) {
 }
 function fillEnvBoxes(selSpecies, selStructs) {
   const env = WATER_TYPES[$('input[name="fWater"]:checked')?.value || "lake"].env;
-  $("#fSpeciesBox").innerHTML = Object.entries(SPECIES).filter(([, v]) => v.env === env).map(([k, v]) => chip("checkbox", "fSpecies", k, v.name, selSpecies.includes(k))).join("");
+  // Only fish that live near the spot, plus any already picked for it.
+  const lat = parseCoords($("#fCoords").value)?.lat;
+  $("#fSpeciesBox").innerHTML = Object.entries(SPECIES).filter(([k, v]) => v.env === env && (livesAt(k, lat) || selSpecies.includes(k))).map(([k, v]) => chip("checkbox", "fSpecies", k, v.name, selSpecies.includes(k))).join("");
   $("#fStructBox").innerHTML = Object.entries(STRUCTURES).filter(([, v]) => v.env === env || v.env === "both").map(([k, v]) => chip("checkbox", "fStruct", k, v.name, selStructs.includes(k))).join("");
 }
 const checked = name => $$(`input[name="${name}"]:checked`).map(x => x.value);
+const refillSpecies = () => { if ($("#fSpeciesBox")) fillEnvBoxes(checked("fSpecies"), checked("fStruct")); };
 
 // How close the estimate has been to your readings at this spot, once there are enough to say.
 function calLine(spot) {
@@ -732,6 +735,7 @@ function coordFeedback(text) {
   else if (c) note.textContent = `Got it: ${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}`;
   else if (/goo\.gl|maps\.app|apple\.co/i.test(text)) note.textContent = "Short share links don't include the location. In the map app, copy the coordinates instead, or use Pick on map.";
   else note.textContent = "Can't read that yet. Paste it like 35.2501, -91.7365 or 35.2501° N, 91.7365° W.";
+  if (c) refillSpecies();
   return c;
 }
 function go(tab) { S.tab = tab; remember(); window.scrollTo(0, 0); render(); }
@@ -746,7 +750,7 @@ document.addEventListener("click", async e => {
     case "closeSheet": closeSheet(); break;
     case "spotsMode": S.spotsMode = id; LS.set("fishcast.spotsMode", id); render(); break;
     case "pickOnMap": openMapPicker(parseCoords($("#fCoords").value), c => {
-      $("#fCoords").value = c.lat + ", " + c.lon; $("#coordNote").textContent = "Location set from the map."; buzz();
+      $("#fCoords").value = c.lat + ", " + c.lon; $("#coordNote").textContent = "Location set from the map."; refillSpecies(); buzz();
     }); break;
     case "mapUse": usePickedSpot(); break;
     case "mapCancel": closeMapPicker(); break;
@@ -807,7 +811,7 @@ document.addEventListener("click", async e => {
       $("#coordNote").textContent = "Finding you…";
       navigator.geolocation.getCurrentPosition(p => {
         $("#fCoords").value = p.coords.latitude.toFixed(5) + ", " + p.coords.longitude.toFixed(5);
-        $("#coordNote").textContent = "Location set to where you're standing."; buzz();
+        $("#coordNote").textContent = "Location set to where you're standing."; refillSpecies(); buzz();
       }, () => { $("#coordNote").textContent = "Couldn't get your location. Check location permission, or search instead."; }, { enableHighAccuracy: true, timeout: 15000 });
       break;
     case "search": {
@@ -825,7 +829,7 @@ document.addEventListener("click", async e => {
     case "pickPlace":
       $("#fCoords").value = Number(b.dataset.lat).toFixed(4) + ", " + Number(b.dataset.lon).toFixed(4);
       if (!$("#fName").value) $("#fName").value = b.dataset.name;
-      $("#searchOut").innerHTML = ""; $("#coordNote").textContent = "Location set to " + b.dataset.name + ". Tap Pick on map to put the pin on your exact spot.";
+      $("#searchOut").innerHTML = ""; refillSpecies(); $("#coordNote").textContent = "Location set to " + b.dataset.name + ". Tap Pick on map to put the pin on your exact spot.";
       break;
     case "askDelSpot": {
       const sid = $("#spotForm").dataset.id, n = Store.list("catch").filter(c => c.spotId === sid).length;
