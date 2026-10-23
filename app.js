@@ -877,10 +877,12 @@ document.addEventListener("submit", e => {
     const problem = !c ? (raw.trim() ? "Those coordinates couldn't be read. Paste them like 35.2501, -91.7365, or use Pick on map." : "Set the location: tap I'm here now, Pick on map, search, or paste coordinates.") : !name ? "Give the spot a name." : "";
     if (problem) { err.textContent = problem; err.hidden = false; err.scrollIntoView({ block: "nearest" }); return; }
     const sid = f.dataset.id || uid("spot"), prev = Store.items[sid] || {};
-    const moved = prev.lat !== c.lat || prev.lon !== c.lon;
-    Store.put(sid, { ...prev, kind: "spot", name, lat: c.lat, lon: c.lon, water: $('input[name="fWater"]:checked')?.value || "lake",
+    const water = $('input[name="fWater"]:checked')?.value || "lake";
+    // A new location or type of water changes the forecast and water estimate, so drop the cached one.
+    const stale = prev.lat !== c.lat || prev.lon !== c.lon || prev.water !== water;
+    Store.put(sid, { ...prev, kind: "spot", name, lat: c.lat, lon: c.lon, water,
       clarity: $('input[name="fClarity"]:checked')?.value || "stained", species: checked("fSpecies"), structures: checked("fStruct"), notes: $("#fNotes").value.trim() });
-    if (moved) { LS.del("fishcast.cond." + sid); delete S.conds[sid]; delete S.tried[sid]; }
+    if (stale) { LS.del("fishcast.cond." + sid); delete S.conds[sid]; delete S.tried[sid]; }
     selectSpot(sid); closeSheet(); buzz(); go("today"); toast("Spot saved");
   } else if (f.id === "logForm") {
     if (spot.example) { closeSheet(); toast("Add your own spot first. Example entries aren't saved.", { label: "Add spot", fn: () => spotSheet(null) }); return; }

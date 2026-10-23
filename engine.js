@@ -61,7 +61,7 @@ function astroEvents(t0, t1, lat, lon) {
 /* ---------------------------------------------------------------- reference data */
 const WATER_TYPES = {
   lake: { name: "Lake", env: "fresh" }, reservoir: { name: "Reservoir", env: "fresh" }, pond: { name: "Pond", env: "fresh" },
-  river: { name: "River / stream", env: "fresh" },
+  river: { name: "River / stream", env: "fresh" }, tailwater: { name: "Tailwater (below a dam)", env: "fresh" },
   inshore: { name: "Inshore bay / marsh", env: "salt" }, surf: { name: "Surf / beach", env: "salt" }, pier: { name: "Pier / jetty", env: "salt" },
 };
 const STRUCTURES = {
@@ -322,8 +322,8 @@ async function condFrom(spot, j, prev, airHist) {
   }
   // The month of history, then the forecast's own past week (more up to date) for the water estimate.
   const air = histHours(airHist).filter(h => h.t < hours[0].t).concat(hours);
-  cond.waterEsts = waterEstimates(air, nowHour());
-  cond.waterEst = waterEstimate(air, nowHour(), spot.water);
+  if (spot.water === "tailwater") { const v = tailwaterEstimate(Date.now()); cond.waterEsts = { tail: v }; cond.waterEst = Math.round(v); }
+  else { cond.waterEsts = waterEstimates(air, nowHour()); cond.waterEst = waterEstimate(air, nowHour(), spot.water); }
   return cond;
 }
 // Surface-temperature estimate from past air temps. Water lags the air: each hour counts less the older it is,
@@ -343,6 +343,14 @@ function laggedAir(hours, now, lagDays) {
   const avg = sum / wsum;
   return clamp(avg + 2 * ramp(avg, 50, 65), 33, 95);
 }
+// Below a deep dam the river is the lake's bottom water, not the weather: cold and steady, about 49°F in spring
+// and 55°F by fall as the lake's deep water slowly warms (typical of Ozark tailwaters like the Little Red).
+function tailwaterEstimate(ms) {
+  const y = new Date(ms).getUTCFullYear(), doy = (ms - Date.UTC(y, 0, 1)) / 864e5;
+  return Math.round((52 + 3 * Math.cos(2 * Math.PI * (doy - 290) / 365)) * 10) / 10;
+}
+// The key a reading is calibrated against: the tailwater curve, or the air lag for the type of water.
+const calKey = water => water === "tailwater" ? "tail" : lagFor(water);
 function waterEstimate(hours, now, water, lagDays = lagFor(water)) {
   const v = laggedAir(hours, now, lagDays);
   return v == null ? null : Math.round(v);
@@ -360,7 +368,7 @@ function waterEstimates(hours, now) {
 function waterCalibration(spot) {
   const now = Date.now(), pts = (spot.cal || []).filter(p => p && p.est && p.water != null && now - p.t < 365 * 864e5);
   const r = spot.reading; // a reading saved before the calibration list existed
-  if (!pts.length && r && r.water != null && r.estAt != null) pts.push({ t: r.waterAt ?? r.at, water: r.water, est: { [lagFor(spot.water)]: r.estAt } });
+  if (!pts.length && r && r.water != null && r.estAt != null) pts.push({ t: r.waterAt ?? r.at, water: r.water, est: { [calKey(spot.water)]: r.estAt } });
   if (!pts.length) return null;
   const newest = Math.max(...pts.map(p => p.t)), oldest = Math.min(...pts.map(p => p.t));
   const w = p => Math.exp(-(newest - p.t) / (60 * 864e5));
@@ -374,8 +382,8 @@ function waterCalibration(spot) {
     const n = use.length;
     return { lag, off, n, sd: n >= 3 ? Math.sqrt(V / W * n / (n - 1)) : null };
   };
-  let best = fit(lagFor(spot.water));
-  if (pts.length >= 4 && newest - oldest >= 10 * 864e5) {
+  let best = fit(calKey(spot.water));
+  if (spot.water !== "tailwater" && pts.length >= 4 && newest - oldest >= 10 * 864e5) {
     for (const lag of LAGS) { const f = fit(lag); if (f && f.n === pts.length && (!best || best.sd == null || f.sd < best.sd)) best = f; }
   }
   if (!best) return null;
@@ -657,6 +665,7 @@ function conditionTips(ctx) {
   else if (h.trend3 <= -0.03) T(10, "Falling pressure: feeding window", "Fish usually feed harder ahead of a front. Use moving baits (spinnerbait, crankbait, chatterbait, swimbait) and cover water rather than picking apart one spot.");
   else if (h.pres > 30.15 && sky === "sunny") T(7, "High pressure, bluebird sky", "Fish hold tight to cover and shade. Precise casts and finesse baits beat covering water.");
   else if (tc === "steady") T(4, "Stable weather", "Fish should be on their normal seasonal spots. Trust the seasonal pattern below.");
+  if (spot.water === "tailwater") T(6, "Check the dam's release schedule", "Fishing changes with the generators: low water is best for wading and drifting nymphs, and rising water turns fish on but is dangerous. Look up the dam's release schedule before you go, and get out as soon as the water starts rising.");
   if (h.wind > 18 || h.gust > 28) T(8, `Strong wind: ${Math.round(h.wind)} mph, gusts ${Math.round(h.gust)}`, "Fish wind-protected pockets and the lee side of points. Use heavier baits to keep contact. Be careful crossing open water.");
   else if (h.wind >= 5) T(env === "salt" ? 5 : 8, `Wind from the ${COMPASS_LONG[dir8] || dir8}: fish the ${down} shore`, `Wind at ${Math.round(h.wind)} mph pushes plankton and baitfish onto the ${down}-facing banks and points it's blowing into, and the chop hides your line. Start on the windblown side.`);
   else if (h.wind < 4) T(5, "Calm water", "Fish are spookier on slick water. Make long casts with lighter line and natural colors. Topwater is strong at low light.");
@@ -887,4 +896,4 @@ function skyStops({ sky, wx }) {
   return (SKIES[sky] && SKIES[sky][wx]) || DAY[wx].map(c => sky === "day" ? c : mixDark(c, DIM[sky]));
 }
 
-if (typeof module !== "undefined") module.exports = { livesAt, speciesFor, loadGauge, loadLive, loadLiveMany, waterEstimate, waterEstimates, waterCalibration, parseLatestOgc, trendFromOgc, usesGauge, blendedScores, whenWord, dayParts, skyStops, sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };
+if (typeof module !== "undefined") module.exports = { tailwaterEstimate, livesAt, speciesFor, loadGauge, loadLive, loadLiveMany, waterEstimate, waterEstimates, waterCalibration, parseLatestOgc, trendFromOgc, usesGauge, blendedScores, whenWord, dayParts, skyStops, sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };

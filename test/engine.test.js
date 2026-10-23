@@ -336,3 +336,12 @@ test("species offered match the area: no northern pike around Searcy, but up nor
   assert.ok(!E.speciesFor({ water: "lake", lat: 35.25 }).includes("pike"));
   assert.deepStrictEqual(E.speciesFor({ water: "lake", lat: 35.25, species: ["pike"] }), ["pike"], "a spot's own picks are kept");
 });
+
+test("a tailwater stays cold and steady instead of following the air, and readings still tune it", () => {
+  const apr = E.tailwaterEstimate(Date.UTC(2026, 3, 20)), oct = E.tailwaterEstimate(Date.UTC(2026, 9, 20));
+  assert.ok(apr >= 48 && apr <= 50 && oct >= 54 && oct <= 56, `${apr} ${oct}`);
+  const cond = { mode: "live", gauge: null, waterEst: 55, waterEsts: { tail: 55 } };
+  const spot = { water: "tailwater", cal: [{ t: Date.now() - 5 * 864e5, water: 52, est: { tail: 55, 7: 70 } }] };
+  assert.strictEqual(E.waterOf(spot, cond).v, 52);
+  assert.ok(E.conditionTips(E.buildCtx({ ...lake, water: "tailwater" }, E.manualCond(base), "trout")).some(t => /release schedule/.test(t.title)));
+});
