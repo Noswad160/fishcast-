@@ -225,14 +225,35 @@ function deriveHours(hours) {
   }
   return hours;
 }
-async function loadLive(spot, prev) {
-  const q = new URLSearchParams({
-    latitude: spot.lat, longitude: spot.lon,
-    hourly: "temperature_2m,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,precipitation,weather_code",
-    temperature_unit: "fahrenheit", wind_speed_unit: "mph", precipitation_unit: "inch",
-    timeformat: "unixtime", timezone: "auto", past_days: 30, forecast_days: 3, // the month of history feeds the water-temperature estimate
-  });
-  const j = await getJSON("https://api.open-meteo.com/v1/forecast?" + q, 8000);
+// Open-Meteo takes several comma-separated coordinates in one request and then replies with a list.
+async function meteo(spots, params) {
+  const q = new URLSearchParams({ latitude: spots.map(s => s.lat).join(","), longitude: spots.map(s => s.lon).join(","),
+    temperature_unit: "fahrenheit", timeformat: "unixtime", ...params });
+  const j = await getJSON("https://api.open-meteo.com/v1/forecast?" + q, 8000), list = Array.isArray(j) ? j : [j];
+  if (list.length !== spots.length) throw new Error("Unexpected forecast reply");
+  return list;
+}
+// A month of air temperatures for the water estimate. It barely changes, so it's fetched at most twice a day.
+const HIST_MS = 12 * hourMs;
+const packHist = j => ({ at: Date.now(), t0: j.hourly.time[0] * 1000, air: j.hourly.temperature_2m.map(v => v == null ? null : Math.round(v * 10) / 10) });
+const histHours = h => h ? h.air.map((air, i) => ({ t: h.t0 + i * hourMs, air })).filter(x => x.air != null) : [];
+// Forecasts for several spots in one request (plus one for the spots whose air history is due).
+async function loadLiveMany(spots, prevs = []) {
+  const due = spots.map((s, i) => !(prevs[i] && prevs[i].airHist && Date.now() - prevs[i].airHist.at < HIST_MS));
+  const [list, hist] = await Promise.all([
+    meteo(spots, { hourly: "temperature_2m,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,precipitation,weather_code",
+      wind_speed_unit: "mph", precipitation_unit: "inch", timezone: "auto", past_days: 7, forecast_days: 3 }),
+    due.some(Boolean) ? meteo(spots.filter((s, i) => due[i]), { hourly: "temperature_2m", past_days: 30, forecast_days: 1 }).catch(() => null) : null,
+  ]);
+  let k = 0;
+  return Promise.all(spots.map((spot, i) => {
+    let airHist = prevs[i] && prevs[i].airHist || null;
+    if (due[i]) { const h = hist && hist[k++]; if (h && h.hourly) airHist = packHist(h); }
+    return condFrom(spot, list[i], prevs[i], airHist);
+  }));
+}
+async function loadLive(spot, prev) { return (await loadLiveMany([spot], [prev]))[0]; }
+async function condFrom(spot, j, prev, airHist) {
   const H = j.hourly, last = {};
   const pick = (k, i) => { const v = H[k][i]; if (v != null) last[k] = v; return last[k] ?? 0; };
   const all = H.time.map((t, i) => ({
@@ -240,10 +261,10 @@ async function loadLive(spot, prev) {
     wind: pick("wind_speed_10m", i), dir: pick("wind_direction_10m", i), gust: pick("wind_gusts_10m", i),
     cloud: pick("cloud_cover", i), precip: pick("precipitation", i), code: H.weather_code ? pick("weather_code", i) : null,
   }));
-  const hours = deriveHours(all.filter(h => h.t > nowHour() - 7 * 864e5));
+  const hours = deriveHours(all);
   // The gauge loads separately (see loadGauge) so a slow USGS reply never holds up the forecast; keep the last reading meanwhile.
   const keep = prev && prev.gauge && Date.now() - prev.gauge.at < GAUGE_MAX_AGE;
-  const cond = { mode: "live", hours, tz: j.utc_offset_seconds || 0, fetchedAt: Date.now(), sst: null, wave: null,
+  const cond = { mode: "live", hours, tz: j.utc_offset_seconds || 0, fetchedAt: Date.now(), sst: null, wave: null, airHist,
     gauge: keep ? prev.gauge : null, gaugeCheckedAt: keep ? prev.gaugeCheckedAt || 0 : 0 };
   if (envOf(spot) === "salt") {
     try {
@@ -255,8 +276,10 @@ async function loadLive(spot, prev) {
       const wv = at("wave_height"); cond.wave = wv == null ? null : wv * 3.281;
     } catch (e) { /* marine data is optional */ }
   }
-  cond.waterEsts = waterEstimates(all, nowHour());
-  cond.waterEst = waterEstimate(all, nowHour(), spot.water);
+  // The month of history, then the forecast's own past week (more up to date) for the water estimate.
+  const air = histHours(airHist).filter(h => h.t < hours[0].t).concat(hours);
+  cond.waterEsts = waterEstimates(air, nowHour());
+  cond.waterEst = waterEstimate(air, nowHour(), spot.water);
   return cond;
 }
 // Surface-temperature estimate from past air temps. Water lags the air: each hour counts less the older it is,
@@ -818,4 +841,4 @@ function skyStops({ sky, wx }) {
   return (SKIES[sky] && SKIES[sky][wx]) || DAY[wx].map(c => sky === "day" ? c : mixDark(c, DIM[sky]));
 }
 
-if (typeof module !== "undefined") module.exports = { loadGauge, loadLive, waterEstimate, waterEstimates, waterCalibration, parseLatestOgc, trendFromOgc, usesGauge, blendedScores, whenWord, dayParts, skyStops, sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };
+if (typeof module !== "undefined") module.exports = { loadGauge, loadLive, loadLiveMany, waterEstimate, waterEstimates, waterCalibration, parseLatestOgc, trendFromOgc, usesGauge, blendedScores, whenWord, dayParts, skyStops, sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };

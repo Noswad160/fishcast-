@@ -298,3 +298,26 @@ test("readings calibrate the estimate: the offset and how fast the water follows
   // Without readings the same spot is plain estimate, and further off.
   assert.ok(Math.abs(E.waterOf({ water: "pond" }, cond).v - truth(now)) > Math.abs(w.v - truth(now)));
 });
+
+test("several spots load in one forecast request; the month of air history loads at most twice a day", async () => {
+  const urls = [];
+  const hist = () => { const now = Math.floor(Date.now() / 36e5) * 3600, time = [], temperature_2m = [];
+    for (let t = now - 30 * 86400; t < now + 86400; t += 3600) { time.push(t); temperature_2m.push(now - t > 7 * 86400 ? 80 : 60); }
+    return { hourly: { time, temperature_2m } }; };
+  const reply = url => { urls.push(url); const n = new URL(url).searchParams.get("latitude").split(",").length;
+    const one = url.includes("past_days=30") ? hist : openMeteo; return n > 1 ? Array.from({ length: n }, one) : one(); };
+  const a = { ...lake, water: "reservoir" }, b = { ...lake, lat: 35, water: "reservoir" };
+  const real = globalThis.fetch;
+  globalThis.fetch = async url => ({ ok: true, status: 200, json: async () => reply(url) });
+  try {
+    const [ca, cb] = await E.loadLiveMany([a, b]);
+    assert.strictEqual(urls.length, 2, "one forecast request and one history request for both spots");
+    assert.ok(ca.airHist && cb.airHist);
+    assert.ok(ca.waterEst > 61, `warm weeks before the last one still count for a reservoir: ${ca.waterEst}`);
+    assert.ok(ca.hours.length <= 10 * 24, "the stored forecast stays a week of history plus 3 days");
+    urls.length = 0;
+    const again = await E.loadLive(a, ca);
+    assert.strictEqual(urls.length, 1, "history isn't fetched again within 12 hours");
+    assert.strictEqual(again.waterEst, ca.waterEst);
+  } finally { globalThis.fetch = real; }
+});

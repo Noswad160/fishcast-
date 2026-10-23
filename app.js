@@ -58,27 +58,39 @@ function cachedCond(id) {
   return S.conds[id] || null;
 }
 const isFresh = c => c && c.mode === "live" && Date.now() - c.fetchedAt < FRESH_MS;
-function ensureCond(spot, force) {
-  const c = cachedCond(spot.id);
-  if (!force && isFresh(c)) { refreshGauge(spot); return Promise.resolve(c); }
-  if (S.loading[spot.id]) return S.loading[spot.id];
-  S.tried[spot.id] = Date.now();
-  const p = (async () => {
-    try {
-      const live = await loadLive(spot, c);
-      S.conds[spot.id] = live; S.errors[spot.id] = "";
-      if (!spot.example) LS.set("fishcast.cond." + spot.id, live);
-      refreshGauge(spot, force);
-      return live;
-    } catch (e) {
-      S.errors[spot.id] = navigator.onLine === false ? "You're offline." : "Couldn't reach the weather service.";
-      if (c && c.mode === "live") return c; // an older forecast beats none
-      return (S.conds[spot.id] = manualCond(S.manual));
-    } finally { delete S.loading[spot.id]; }
-  })();
-  S.loading[spot.id] = p;
-  return p;
+// Load forecasts for several spots in one request; spots already loading or still fresh are left alone.
+function ensureConds(list, force) {
+  const todo = [];
+  for (const s of list) {
+    if (S.loading[s.id]) continue;
+    if (!force && isFresh(cachedCond(s.id))) refreshGauge(s); else todo.push(s);
+  }
+  if (todo.length) {
+    const prevs = todo.map(s => cachedCond(s.id));
+    // If the combined request fails, try each spot on its own so one bad spot can't block the rest.
+    const batch = loadLiveMany(todo, prevs).catch(e => todo.length > 1 ? Promise.all(todo.map((s, i) => loadLive(s, prevs[i]).catch(err => err))) : [e]);
+    todo.forEach((spot, i) => {
+      const c = prevs[i];
+      S.tried[spot.id] = Date.now();
+      S.loading[spot.id] = (async () => {
+        try {
+          const live = (await batch)[i];
+          if (live instanceof Error) throw live;
+          S.conds[spot.id] = live; S.errors[spot.id] = "";
+          if (!spot.example) LS.set("fishcast.cond." + spot.id, live);
+          refreshGauge(spot, force);
+          return live;
+        } catch (e) {
+          S.errors[spot.id] = navigator.onLine === false ? "You're offline." : "Couldn't reach the weather service.";
+          if (c && c.mode === "live") return c; // an older forecast beats none
+          return (S.conds[spot.id] = manualCond(S.manual));
+        } finally { delete S.loading[spot.id]; }
+      })();
+    });
+  }
+  return Promise.all(list.map(s => S.loading[s.id] || Promise.resolve(cachedCond(s.id))));
 }
+const ensureCond = (spot, force) => ensureConds([spot], force).then(r => r[0]);
 // The gauge reading loads after the forecast and fills in when it arrives. Gauges report every 15-60 minutes,
 // so check at most every 30 minutes (5 after a failed try).
 function refreshGauge(spot, force) {
@@ -101,18 +113,17 @@ function refreshCurrent(force) {
   ensureCond(spot, force).then(render);
   $("#refreshBtn").classList.add("spin");
 }
-// Load forecasts for every spot, one at a time, so the Spots tab can rank them. force reloads even fresh ones.
+// Load forecasts for every spot that needs one, in one request, so the Spots tab can rank them. force reloads all.
 const needsLoad = s => !isFresh(cachedCond(s.id)) && Date.now() - (S.tried[s.id] || 0) >= 60e3;
 async function warmSpots(force) {
-  if (S.warming) return; S.warming = true;
+  if (S.warming) return;
+  const todo = spots().filter(s => force || needsLoad(s));
+  if (!todo.length) return;
+  S.warming = true;
   if (force) $("#refreshBtn").classList.add("spin");
-  try {
-    for (const s of spots()) {
-      if (!force && !needsLoad(s)) continue;
-      await ensureCond(s, force);
-      if (S.tab === "spots") render();
-    }
-  } finally { S.warming = false; $("#refreshBtn").classList.remove("spin"); }
+  try { await ensureConds(todo, force); }
+  finally { S.warming = false; $("#refreshBtn").classList.remove("spin"); }
+  if (S.tab === "spots") render();
 }
 
 /* ---------------------------------------------------------------- trips */
