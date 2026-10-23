@@ -131,6 +131,49 @@ const SPECIES = {
     { min: 80, name: "Summer", where: "Shade of docks, weed edges and deeper brush. Shallow early and late.", baits: ["Worm on a small hook near bottom", "Small jig", "Popper at dusk"], how: "Bigger fish sit deeper than the small ones you see." },
     { name: "Fall", where: "Weed edges and docks; bigger fish move a little deeper.", baits: ["Worm", "Small jig", "Small spinner"], how: "Fish the remaining green weeds." },
   ]},
+  // Spotted (Kentucky) bass: the southern half of the country, common in clear, rocky reservoirs like Greers Ferry.
+  spotted: { name: "Spotted bass", env: "fresh", maxLat: 41, opt: [63, 78], live: [40, 90], lowLight: .6, night: .3, phases: [
+    { max: 50, name: "Winter", where: "Bluff walls, channel swings and steep points, often 25–45 ft, sometimes suspended in standing timber.", baits: ["Ned rig", "Hair jig", "Jigging spoon", "Suspending jerkbait with long pauses"], how: "Spots stay more active in cold water than largemouth. Fish slow, and look deeper than you would for largemouth." },
+    { max: 60, season: "warming", name: "Prespawn", where: "Secondary points and chunk-rock banks leading into spawning creeks. Wind-blown points are best.", baits: ["Jerkbait", "Shaky head", "Jig on rock", "Small swimbait"], how: "Fish the windy side. A few sunny days pull fish up on the rock." },
+    { max: 68, season: "warming", name: "Spawn", where: "Gravel and small rock in 5–15 ft, deeper than largemouth beds, on main-lake pockets and points.", baits: ["Shaky head", "Drop shot", "Tube", "Ned rig"], how: "Beds are deep enough that you often can't see them. Drag baits slowly across gravel." },
+    { min: 77, name: "Summer", where: "Deep points, humps and brush piles in 20–35 ft. Schools push shad to the surface at dawn.", baits: ["Drop shot", "Shaky head", "Walking topwater early", "Swimbait"], how: "Keep a topwater rod ready for schooling fish at first light, then go deep." },
+    { min: 55, max: 77, season: "cooling", name: "Fall", where: "Following shad into creek arms. Schooling fish break the surface on calm days.", baits: ["Spinnerbait", "Walking topwater", "Swimbait", "Crankbait"], how: "Find the bait and you find the spots. Cover water." },
+    { max: 55, season: "cooling", name: "Late fall", where: "Main-lake bluffs and steep points near deep water.", baits: ["Jig", "Jerkbait", "Jigging spoon"], how: "Fish group up as the water cools. Work the area once you catch one." },
+    { name: "Early summer", where: "Main-lake points and the first deep break off spawning banks.", baits: ["Drop shot", "Shaky head", "Topwater early", "Ned rig"], how: "Shallow at first light, then follow them out to 15–25 ft." },
+  ]},
+  whitebass: { name: "White bass", env: "fresh", opt: [55, 75], live: [40, 88], lowLight: .8, night: .5, phases: [
+    { max: 48, name: "Winter", where: "Big schools on deep channel edges, humps and creek mouths in 25–50 ft, following shad.", baits: ["Slab spoon jigged vertically", "Blade bait", "Small swimbait on a jighead"], how: "Find the shad on your electronics. Jig the spoon just off the bottom under them." },
+    { max: 58, season: "warming", name: "Spawn run", where: "Up the rivers and creeks that feed the lake, stacked in eddies below shoals and at creek mouths. The run starts as water nears 50°F, often after a warm rain.", baits: ["Small inline spinner", "1/8 oz jig with a curly tail", "Small crankbait", "Roadrunner-style jig"], how: "Fish the current breaks. Where you catch one, there are usually dozens." },
+    { max: 68, season: "warming", name: "Postspawn", where: "Dropping back to the lake, gathering on main-lake points and flats near the river arms.", baits: ["Small crankbait", "Inline spinner", "Curly-tail jig", "Trolled small crankbaits"], how: "Troll or cast wind-blown points until you find a school." },
+    { min: 75, name: "Summer jumps", where: "Schools push shad to the surface over main-lake flats and points at dawn and dusk. Midday they sit 20–35 ft on humps and points, and at night they gather under lights.", baits: ["Topwater popper with a jig dropper", "Slab spoon", "Small swimbait", "Tail-spinner (Little George)"], how: "Watch for gulls and splashing. Cast past the school and bring the bait through it." },
+    { season: "cooling", name: "Fall", where: "Schools chase shad into creeks and coves. Surface feeding returns on calm mornings and evenings.", baits: ["Topwater with a dropper", "Slab spoon", "Small swimbait", "Inline spinner"], how: "Cover water and watch for surface activity." },
+    { name: "Early summer", where: "Main-lake points and flats. Schools start pushing shad at first light.", baits: ["Inline spinner", "Small crankbait", "Slab spoon"], how: "Fish early, and keep moving until you find a school." },
+  ]},
+  hybrid: { name: "Hybrid striped bass", env: "fresh", opt: [60, 77], live: [40, 88], lowLight: .9, night: .7, phases: [
+    { max: 50, name: "Winter", where: "Big schools in creek arms and on deep channel edges, following shad. Often near the dam.", baits: ["Live shad on a downline", "Slab spoon", "Bucktail jig", "Swimbait"], how: "Find the bait on your electronics and fish just above the school." },
+    { max: 65, season: "warming", name: "Spring run", where: "Up the river arms and below the dam in current (they run like stripers, though they don't reproduce), and on wind-blown points.", baits: ["Live shad", "Bucktail jig", "Swimbait", "Topwater at dawn"], how: "Moving water is the trigger: fish when the dam is generating." },
+    { min: 78, name: "Summer", where: "Open water off main-lake points and humps, 25–45 ft along the thermocline by day. Topwater blowups at dawn.", baits: ["Live shad on a downline", "Slab spoon", "Deep-trolled crankbait or umbrella rig", "Topwater walker early"], how: "Follow the birds at first light; after that use your electronics. Hybrids handle warm water better than stripers." },
+    { season: "cooling", name: "Fall", where: "Chasing shad into creek arms and coves. Surface feeding returns.", baits: ["Walking topwater", "Swimbait", "Slab spoon", "Live shad"], how: "Cover water and watch for breaking fish." },
+    { name: "Early summer", where: "Main-lake points and humps, moving deeper as the water warms.", baits: ["Live shad", "Swimbait", "Slab spoon", "Topwater early"], how: "Fish the first and last hours of light." },
+  ]},
+  lstriper: { name: "Striped bass", env: "fresh", opt: [55, 70], live: [40, 80], lowLight: .9, night: .8, phases: [
+    { max: 50, name: "Winter", where: "Following shad in creek arms and the upper lake. On sunny days they can be surprisingly shallow.", baits: ["Live shad or shiners on planer boards or free-lines", "Bucktail jig", "Swimbait", "Umbrella rig (where legal)"], how: "Find the shad and the stripers won't be far. Slow-troll live bait." },
+    { max: 62, season: "warming", name: "Spawn run", where: "Up the rivers and below the dam in current, where they try to spawn.", baits: ["Live shad", "Bucktail jig", "Swimbait", "Walking topwater"], how: "Fish current, especially when the dam is generating." },
+    { min: 75, name: "Summer squeeze", where: "Deep, cool water near the dam and the main channel, 30–60 ft at the thermocline. Schools move little.", baits: ["Live shad on a downline", "Jigging spoon", "Deep trolling"], how: "Fish early. Stripers caught from warm water often die after release, so keep legal fish or target something else." },
+    { season: "cooling", name: "Fall", where: "Moving up creek arms after shad. Topwater action on calm mornings.", baits: ["Walking topwater", "Swimbait", "Live shad on planer boards"], how: "Watch for birds and surface boils." },
+    { name: "Prime", where: "Main-lake points, humps and the river channel, following bait.", baits: ["Live shad", "Bucktail jig", "Swimbait"], how: "Low light and moving water are best." },
+  ]},
+  rockbass: { name: "Rock bass / goggle-eye", env: "fresh", opt: [60, 75], live: [38, 85], lowLight: .6, night: .3, phases: [
+    { max: 50, name: "Cold water", where: "Deep, slow pools with boulders and root wads.", baits: ["Small jig, slow", "Crawfish-colored tube", "Live minnow"], how: "Fish tight to cover and slow. They won't chase far." },
+    { max: 65, season: "warming", name: "Spawn", where: "Gravel beside boulders and logs in slower water. Males guard the nests.", baits: ["Small crawfish crankbait", "Tube", "Inline spinner"], how: "Work every boulder and log along the pool edges." },
+    { min: 75, name: "Summer", where: "Shady boulders and undercut banks in pools. Most feeding at dawn and dusk.", baits: ["Live crawfish or a crawfish soft plastic", "Small topwater at dusk", "Inline spinner"], how: "Shade is key. Fish the shaded side of every rock." },
+    { name: "Prime", where: "Eddies behind boulders, log jams and root wads along pools.", baits: ["Small tube or crawfish jig", "Inline spinner", "Live crawfish or hellgrammite"], how: "Cast tight to the cover. Ozark streams are full of them." },
+  ]},
+  drum: { name: "Freshwater drum", env: "fresh", opt: [65, 80], live: [40, 90], lowLight: .4, night: .5, phases: [
+    { max: 50, name: "Cold water", where: "Deep river holes and main-lake channel edges.", baits: ["Nightcrawler on the bottom", "Crawfish tail", "Small jigging spoon"], how: "Fish the bottom, slowly." },
+    { min: 75, name: "Summer", where: "Rocky points, riprap and current below dams, often in stained or muddy water.", baits: ["Nightcrawler", "Crawfish tail", "Small jig bounced on the bottom"], how: "Current below dams concentrates them." },
+    { name: "Prime", where: "Rock, gravel and mussel beds in 5–20 ft, and below dams in current.", baits: ["Nightcrawler on a bottom rig", "Crawfish tail", "Jig tipped with a crawler", "Blade bait"], how: "They crush mussels and crawfish, so keep baits on the bottom. They fight hard on light tackle." },
+  ]},
   // Northern pike live in northern lakes, not in Arkansas or the South (minLat).
   pike: { name: "Northern pike", env: "fresh", minLat: 37, opt: [55, 70], live: [33, 82], lowLight: .4, night: 0, phases: [
     { max: 45, name: "Cold water", where: "Shallow dark-bottom back bays warm first at ice-out. In winter, deep weed edges and drop-offs.", baits: ["Dead bait (smelt, herring) on a quick-strike rig", "Suspending jerkbait", "Large swimbait, slow"], how: "Slow presentations. Big fish are caught on dead bait in cold water." },
@@ -720,7 +763,7 @@ function similarity(a, b, salt) {
 
 /* ---------------------------------------------------------------- putting it together */
 // Whether a species lives near this latitude (unknown location: assume it does).
-function livesAt(k, lat) { const m = SPECIES[k].minLat; return lat == null || m == null || lat >= m; }
+function livesAt(k, lat) { const { minLat, maxLat } = SPECIES[k]; return lat == null || ((minLat == null || lat >= minLat) && (maxLat == null || lat <= maxLat)); }
 function speciesFor(spot) {
   return (spot.species && spot.species.length) ? spot.species : Object.keys(SPECIES).filter(k => SPECIES[k].env === envOf(spot) && livesAt(k, spot.lat));
 }

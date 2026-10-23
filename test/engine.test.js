@@ -325,6 +325,14 @@ test("several spots load in one forecast request; the month of air history loads
 test("species offered match the area: no northern pike around Searcy, but up north", () => {
   assert.ok(!E.livesAt("pike", 35.25) && E.livesAt("pike", 45) && E.livesAt("pike", null));
   assert.ok(E.livesAt("lmb", 35.25) && E.livesAt("trout", 35.25));
+  for (const k of ["spotted", "whitebass", "hybrid", "lstriper", "rockbass", "drum"]) assert.ok(E.livesAt(k, 35.25), k);
+  assert.ok(!E.livesAt("spotted", 46.5), "no spotted bass in Minnesota");
+  // Every new species has a phase (tips and baits) for every temperature and season.
+  for (const k of ["spotted", "whitebass", "hybrid", "lstriper", "rockbass", "drum"]) for (let water = 34; water <= 92; water += 2)
+    for (const season of ["warming", "summer", "cooling"]) {
+      const p = E.phaseOf(E.SPECIES[k], water, season);
+      assert.ok(p && p.baits.length && p.where, `${k} ${water}°F ${season}`);
+    }
   assert.ok(!E.speciesFor({ water: "lake", lat: 35.25 }).includes("pike"));
   assert.deepStrictEqual(E.speciesFor({ water: "lake", lat: 35.25, species: ["pike"] }), ["pike"], "a spot's own picks are kept");
 });
