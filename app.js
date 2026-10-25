@@ -451,13 +451,20 @@ function historyCard(ctx) {
   return `<section class="card" aria-label="Your history here"><h3>What's worked here ${spot.example ? '<span class="example">Example</span>' : ""}</h3>${["working", "backwards"].includes(rc.verdict) ? `<p class="verdict ${rc.verdict}">${esc(rcLine)}</p>` : ""}${body}</section>`;
 }
 
-function spotScore(spot) {
+// A spot's score right now for the best of its species, so the Spots tab doesn't depend on which species
+// was last picked on Today. Returns { score, sp } or null while the forecast loads.
+function spotBest(spot) {
   const c = cachedCond(spot.id);
   if (!c) return null;
-  try { return buildCtx(spot, c, curSpecies(spot)).now.score; } catch (e) { return null; }
+  let best = null;
+  for (const sp of speciesFor(spot)) {
+    try { const score = buildCtx(spot, c, sp).now.score; if (!best || score > best.score) best = { score, sp }; } catch (e) { /* skip */ }
+  }
+  return best;
 }
+const spotScore = spot => spotBest(spot)?.score ?? null;
 function renderSpots() {
-  const own = ownSpots(), list = spots().map(s => ({ s, score: spotScore(s) }));
+  const own = ownSpots(), list = spots().map(s => { const b = spotBest(s); return { s, score: b ? b.score : null, sp: b && b.sp }; });
   list.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
   // Only name a best spot once every spot has a current forecast, so a stale score can't win or lose it.
   const pending = spots().some(s => S.loading[s.id] || needsLoad(s));
@@ -474,11 +481,11 @@ function renderSpots() {
     showSpotsMap($("#spotsMap")); warmSpots();
     return;
   }
-  html += `<div class="list">${list.map(({ s, score }) => `<div class="item${s.id === best ? " best" : ""}" style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center">
+  html += `<div class="list">${list.map(({ s, score, sp }) => `<div class="item${s.id === best ? " best" : ""}" style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center">
       <button class="spotcard" data-act="openSpot" data-id="${esc(s.id)}" style="border:0;background:none;padding:0;display:flex;flex-direction:column;gap:2px;align-items:flex-start">
         ${s.id === best ? '<span class="label" style="color:var(--accent)">Best bite right now</span>' : ""}
         <b style="font-size:1.08rem">${esc(s.name)}</b>
-        <span class="small muted">${esc(WATER_TYPES[s.water]?.name || "")} · ${speciesFor(s).slice(0, 3).map(k => esc(SPECIES[k].name)).join(", ")}</span>
+        <span class="small muted">${esc(WATER_TYPES[s.water]?.name || "")} · ${sp && speciesFor(s).length > 1 ? "best for " + esc(SPECIES[sp].name.toLowerCase()) : speciesFor(s).slice(0, 3).map(k => esc(SPECIES[k].name)).join(", ")}</span>
       </button>
       ${score == null ? `<span class="badge wait"><b>…</b></span>` : `<span class="badge" style="background:${scoreColor(score)}"><b>${score}</b><span>${scoreLabel(score)}</span></span>`}
       ${s.example ? "" : `<button class="iconbtn" data-act="editSpot" data-id="${esc(s.id)}" aria-label="Edit ${esc(s.name)}">${ICON_EDIT}</button>`}
@@ -739,7 +746,8 @@ function coordFeedback(text) {
   return c;
 }
 function go(tab) { S.tab = tab; remember(); window.scrollTo(0, 0); render(); }
-function selectSpot(id) { S.spotId = id; S.speciesId = null; remember(); }
+// Open a spot on its best species right now, so Today shows the same score as the Spots tab.
+function selectSpot(id) { S.spotId = id; const s = spots().find(x => x.id === id); S.speciesId = (s && spotBest(s)?.sp) || null; remember(); }
 
 document.addEventListener("click", async e => {
   const nav = e.target.closest(".navbtn");

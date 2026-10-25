@@ -576,14 +576,15 @@ function scoreHour(sp, h, ctx) {
   if (sp.lowLight >= 0.5) add(5 * ramp(h.cloud, 55, 80) * dayness * (1 - coldness), "overcast");
   add(4 * ramp(h.precip, 0.003, 0.02) * ramp(h.precip, 0.25, 0.12), "light rain");
   add(-6 * ramp(h.precip, 0.2, 0.4), "heavy rain");
-  // Solunar periods peak at their center and taper off past their edges.
+  // Solunar periods peak at their center and taper off past their edges. Kept small (4 major, 2 minor): the
+  // evidence for them is weak, and as they shift ~50 min a day bigger bumps made the score look random.
   const mid = h.t + hourMs / 2;
   let solV = 0, sol = "";
   for (const w of ctx.astro.solunar) {
-    const half = (w.end - w.start) / 2, wgt = ramp(Math.abs(mid - w.center), half * 1.5, half * 0.5), v = (w.type === "major" ? 10 : 6) * wgt;
+    const half = (w.end - w.start) / 2, wgt = ramp(Math.abs(mid - w.center), half * 1.5, half * 0.5), v = (w.type === "major" ? 4 : 2) * wgt;
     if (v > solV) { solV = v; sol = wgt >= 0.5 ? w.type : ""; }
   }
-  add(solV, sol === "minor" || (!sol && solV <= 6) ? "solunar minor" : "solunar major");
+  add(solV, sol === "minor" || (!sol && solV <= 2) ? "solunar minor" : "solunar major");
   const mp = moonIllum(h.t).phase, days = Math.min(mp, Math.abs(mp - 0.5), 1 - mp) * 29.53;
   add(3 * ramp(days, 3, 1.5), mp > 0.25 && mp < 0.75 ? "full moon" : "new moon");
   const fit = tempFit(sp, water);
