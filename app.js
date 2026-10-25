@@ -267,9 +267,22 @@ const LABELS = {
 };
 const ICON_EDIT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>`;
 const bars = rows => `<div class="bars">${rows.slice(0, 5).map(([k, n]) => `<div class="bar"><span>${esc(k)}</span><span class="track"><span class="fill" style="width:${Math.round(n / rows[0][1] * 100)}%"></span></span><span class="n">${n}</span></div>`).join("")}</div>`;
-function tally(list, key) {
+// Lure names match whatever the capitals, spaces or dashes: "Paddle-tail jig" and "paddletail jig" are one lure.
+const lureKey = s => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+// Every lure logged at any spot, under the spelling used most, most-caught first.
+function allLures() {
   const m = new Map();
-  for (const e of list) { const k = typeof key === "function" ? key(e) : e[key]; if (!k) continue; m.set(k, (m.get(k) || 0) + (e.count || 1)); }
+  for (const e of entries()) {
+    const k = lureKey(e.lure); if (!k) continue;
+    const r = m.get(k) || { key: k, names: new Map(), n: 0 }, name = e.lure.trim();
+    r.names.set(name, (r.names.get(name) || 0) + 1); r.n += e.count || 1; m.set(k, r);
+  }
+  return [...m.values()].map(r => ({ key: r.key, n: r.n, name: [...r.names].sort((a, b) => b[1] - a[1])[0][0] })).sort((a, b) => b.n - a.n);
+}
+const lureName = (lure, lures = allLures()) => lures.find(l => l.key === lureKey(lure))?.name || String(lure || "").trim();
+function tally(list, key) {
+  const m = new Map(), lures = key === "lure" ? allLures() : null;
+  for (const e of list) { let k = typeof key === "function" ? key(e) : e[key]; if (!k) continue; if (lures) k = lureName(k, lures); m.set(k, (m.get(k) || 0) + (e.count || 1)); }
   return [...m.entries()].sort((a, b) => b[1] - a[1]);
 }
 const titleCase = s => String(s).toLowerCase().replace(/\b\w/g, c => c.toUpperCase()).replace(/, (\w\w)\.?$/, (m, st) => ", " + st.toUpperCase());
@@ -566,15 +579,18 @@ function logSheet(kind) {
   }
   const spId = curSpecies(spot), list = Object.keys(SPECIES).filter(k => SPECIES[k].env === envOf(spot) && livesAt(k, spot.lat));
   const mine = speciesFor(spot), order = mine.concat(list.filter(k => !mine.includes(k)));
-  const recent = [];
-  for (const e of entries().filter(e => e.spotId === spot.id && e.lure).sort((a, b) => b.t - a.t)) if (!recent.includes(e.lure)) recent.push(e.lure);
+  // Quick picks: lures used here (newest first), then your best lures from other spots, then baits for the season.
+  const lures = allLures(), recent = [], keys = new Set(), add = l => { const k = lureKey(l); if (k && !keys.has(k)) { keys.add(k); recent.push(lureName(l, lures)); } };
+  for (const e of entries().filter(e => e.spotId === spot.id && e.lure).sort((a, b) => b.t - a.t)) add(e.lure);
+  for (const l of lures) if (recent.length < 6) add(l.name);
   const cond = cachedCond(spot.id);
-  if (recent.length < 4 && cond) for (const b of buildCtx(spot, cond, spId).phase.baits) { const short = b.replace(/\s*\(.*\)$/, "").replace(/,.*$/, ""); if (!recent.includes(short)) recent.push(short); }
+  if (recent.length < 4 && cond) for (const b of buildCtx(spot, cond, spId).phase.baits) add(b.replace(/\s*\(.*\)$/, "").replace(/,.*$/, ""));
   openSheet(`<form id="logForm" data-kind="catch" novalidate>
     <div class="sheethead"><h3 id="sheetTitle">Log a catch</h3><span class="small muted">${esc(spot.name)}</span></div>
     <div class="field"><span class="label">Species</span><div class="chips">${order.slice(0, mine.length + 2).map(k => chip("radio", "lSpecies", k, SPECIES[k].name, k === spId)).join("")}</div></div>
     <div class="field"><span class="label">Caught on</span><div class="chips">${recent.slice(0, 6).map(l => chip("radio", "lLure", l, l, false)).join("")}${chip("radio", "lLure", "__other", "Something else…", false)}</div>
-      <input type="text" id="lLureOther" placeholder="Lure or bait, e.g. white chatterbait" hidden></div>
+      <input type="text" id="lLureOther" list="lureList" autocomplete="off" placeholder="Lure or bait, e.g. white chatterbait" hidden>
+      <datalist id="lureList">${lures.map(l => `<option value="${esc(l.name)}">`).join("")}</datalist></div>
     <div class="grid2"><label class="field"><span class="label">Length (in)</span><input type="number" id="lLen" step="0.25" inputmode="decimal" placeholder="optional"></label>
       <div class="field"><span class="label">How many</span>${stepper("lCount", 1, 1, 1)}</div></div>
     <details><summary>Depth and notes</summary><div class="grid2" style="margin-top:8px"><label class="field"><span class="label">Depth (ft)</span><input type="number" id="lDepth" inputmode="numeric"></label>
@@ -896,7 +912,7 @@ document.addEventListener("submit", e => {
     if (spot.example) { closeSheet(); toast("Add your own spot first. Example entries aren't saved.", { label: "Add spot", fn: () => spotSheet(null) }); return; }
     const cond = cachedCond(spot.id), cctx = cond ? buildCtx(spot, cond, curSpecies(spot)) : null;
     const snap = cctx ? { ...snapFromCtx(cctx), score: cctx.now.score, species: cctx.spId } : null;
-    const pick = $('input[name="lLure"]:checked')?.value, lure = (!pick || pick === "__other" ? $("#lLureOther").value : pick).trim();
+    const pick = $('input[name="lLure"]:checked')?.value, lure = lureName(!pick || pick === "__other" ? $("#lLureOther").value : pick);
     const entry = { kind: "catch", spotId: spot.id, t: Date.now(), snap, lure }, trip = activeTrip();
     if (trip && trip.spotId === spot.id) entry.tripId = trip.id;
     if (f.dataset.kind === "blank") Object.assign(entry, { count: 0, hours: Number($("#lHours").value) || 0, notes: "" });
