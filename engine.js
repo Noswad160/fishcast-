@@ -515,7 +515,16 @@ function gaugeFor(spot, cond) {
 }
 function waterOf(spot, cond) {
   const r = spot.reading;
-  if (r && r.water != null && Date.now() - (r.waterAt ?? r.at) < 3 * 864e5) return { v: r.water, src: "your reading" };
+  if (r && r.water != null && Date.now() - (r.waterAt ?? r.at) < 3 * 864e5) {
+    // Your reading moves with the weather since you took it: the estimate's change since then is added to it.
+    // (After 3 days the calibrated estimate below takes over, which lands on the same value for one reading.)
+    const at = r.waterAt ?? r.at, pt = (spot.cal || []).find(p => p && p.est && Math.abs(p.t - at) < 60e3);
+    const cal = pt && waterCalibration(spot), key = cal ? cal.lag : calKey(spot.water);
+    const then = pt && pt.est[key], now = cond.mode === "live" && cond.waterEsts ? cond.waterEsts[key] : null;
+    if (then == null || now == null) return { v: r.water, src: "your reading" };
+    const change = Math.round(now - then);
+    return { v: Math.round(clamp(r.water + change, 33, 95)), src: change ? "your reading, adjusted" : "your reading", reading: r.water, change, at };
+  }
   if (cond.mode === "manual") return { v: cond.waterEst, src: "entered" };
   const g = gaugeFor(spot, cond);
   if (g) return { v: Math.round(g.f), src: `USGS · ${Math.round(g.dist)} mi`, gauge: g };

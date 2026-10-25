@@ -649,6 +649,7 @@ function fillEnvBoxes(selSpecies, selStructs) {
 const checked = name => $$(`input[name="${name}"]:checked`).map(x => x.value);
 const refillSpecies = () => { if ($("#fSpeciesBox")) fillEnvBoxes(checked("fSpecies"), checked("fStruct")); };
 
+const fmtAgo = t => { const h = (Date.now() - t) / 36e5; return h < 1 ? "less than an hour ago" : h < 24 ? Math.round(h) + " hours ago" : Math.round(h / 24) === 1 ? "yesterday" : Math.round(h / 24) + " days ago"; };
 // How close the estimate has been to your readings at this spot, once there are enough to say.
 function calLine(spot) {
   const cal = waterCalibration(spot);
@@ -666,7 +667,8 @@ function readingSheet() {
   openSheet(`<form id="readingForm" novalidate>
     <h3 id="sheetTitle">What you see on the water</h3>
     <div class="field"><span class="label">Your water temperature reading (°F)</span>${stepper("rdWater", w.v, 1, 32)}
-      <span class="small muted">${w.tuned ? "Fishcast is estimating this from air temperatures, fitted to your readings here. Each new reading makes it more accurate." : w.src === "estimate" ? "Fishcast is estimating this from air temperatures. A thermometer reading makes the tips much better, and teaches the estimate for this spot." : w.gauge ? "Leave it as is to keep using the gauge. A reading you enter is used for 3 days." : "Used for 3 days."}</span>
+      <span class="small muted">${w.tuned ? "Fishcast is estimating this from air temperatures, fitted to your readings here. Each new reading makes it more accurate." : w.src === "estimate" ? "Fishcast is estimating this from air temperatures. A thermometer reading makes the tips much better, and teaches the estimate for this spot." : w.change ? `You entered ${w.reading}°F ${fmtAgo(w.at)}. The weather since then has ${w.change > 0 ? "warmed" : "cooled"} it about ${Math.abs(w.change)}°F. Enter a new reading any time.`
+        : w.gauge ? "Leave it as is to keep using the gauge. A reading you enter follows the weather for 3 days." : "Your reading follows the weather for 3 days, then the estimate (tuned by it) takes over."}</span>
       ${calLine(spot)}</div>
     ${gaugeHtml}
     <div class="field"><span class="label">Clarity</span><div class="chips">${["clear", "stained", "muddy"].map(c => chip("radio", "rdClarity", c, c, c === clarityOf(spot))).join("")}</div></div>
@@ -946,8 +948,8 @@ document.addEventListener("submit", e => {
     if (Number(inp.value) !== Number(inp.defaultValue)) {
       // Remember the air-temperature estimate at the time so later estimates here can be corrected by the difference.
       const c = cachedCond(spot.id);
-      r.water = Number(inp.value); r.waterAt = Date.now();
-      if (c && c.mode === "live" && c.waterEsts) cal = (spot.cal || []).concat({ t: Date.now(), water: r.water, est: c.waterEsts }).slice(-30);
+      const now = Date.now(); r.water = Number(inp.value); r.waterAt = now;
+      if (c && c.mode === "live" && c.waterEsts) cal = (spot.cal || []).concat({ t: now, water: r.water, est: c.waterEsts }).slice(-30);
     }
     if ($('input[name="rdTide"]')) { r.tide = $('input[name="rdTide"]:checked')?.value || ""; r.tideAt = Date.now(); }
     const gauge = $('input[name="rdGauge"]:checked')?.value || spot.gauge;

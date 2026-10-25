@@ -345,3 +345,17 @@ test("a tailwater stays cold and steady instead of following the air, and readin
   assert.strictEqual(E.waterOf(spot, cond).v, 52);
   assert.ok(E.conditionTips(E.buildCtx({ ...lake, water: "tailwater" }, E.manualCond(base), "trout")).some(t => /release schedule/.test(t.title)));
 });
+
+test("a reading follows the weather after you enter it, and hands over to the estimate without a jump", () => {
+  const day = 864e5, at = Date.now() - 1.5 * day;
+  const spot = { water: "pond", reading: { water: 62, at, waterAt: at }, cal: [{ t: at, water: 62, est: { 1.5: 60, 2.5: 60, 4: 60, 7: 60, 10: 60, 14: 60 } }] };
+  const cooler = { mode: "live", gauge: null, waterEst: 56, waterEsts: { 1.5: 55, 2.5: 56, 4: 57, 7: 58, 10: 59, 14: 59 } };
+  const w = E.waterOf(spot, cooler);
+  assert.strictEqual(w.v, 58, "62 entered, the estimate has cooled 4° since, so 58");
+  assert.strictEqual(w.change, -4); assert.match(w.src, /your reading/);
+  // Right after the 3 days, the calibrated estimate gives the same value.
+  const later = { ...spot, reading: { ...spot.reading, waterAt: at - 2 * day, at: at - 2 * day }, cal: [{ ...spot.cal[0], t: at - 2 * day }] };
+  assert.strictEqual(E.waterOf(later, cooler).v, 58);
+  // No forecast (offline, typed-in conditions): the reading is used as entered.
+  assert.strictEqual(E.waterOf(spot, { mode: "manual", waterEst: 70 }).v, 62);
+});

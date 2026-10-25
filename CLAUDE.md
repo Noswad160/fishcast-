@@ -33,7 +33,7 @@ Push to `main` → `.github/workflows/pages.yml` runs the tests and publishes th
   neighbours (`blendedScores`). Best times are parts of the day bounded by sunrise/sunset (`dayParts`), shown in time
   order with the best highlighted (earliest within 2 points of the top). A test fails if small forecast updates move
   any hour more than 10 points. Use blended scores everywhere scores appear (Today, chart, trips, widget).
-- **Water temperature**, in priority order: the user's reading (3 days), then the nearest USGS gauge within 20 miles,
+- **Water temperature**, in priority order: the user's reading (3 days, moved by the estimate's change since it was taken), then the nearest USGS gauge within 20 miles,
   then an air-temperature estimate. **Ponds don't use gauges by default** (`usesGauge`).
 - **USGS**: the forecast never waits for the gauge; the gauge loads in the background, at most every 30 minutes.
   Gauges come from api.waterdata.usgs.gov (new) and waterservices.usgs.gov (legacy) in parallel. The legacy one
