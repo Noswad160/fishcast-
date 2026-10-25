@@ -1,29 +1,48 @@
 name: fishcast-pages
-# Publishes the app to GitHub Pages. Requires Settings → Pages → Source: "GitHub Actions".
+# Tests every push; publishes the app to GitHub Pages from main.
+# Requires Settings → Pages → Source: "GitHub Actions".
 on:
   workflow_dispatch:
   push:
-    branches: [main]
-    paths-ignore: ["README.md"]
+    paths-ignore: ["README.md", "CLAUDE.md"]
 permissions:
   contents: read
-  pages: write
-  id-token: write
-concurrency:
-  group: pages
-  cancel-in-progress: true
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Test forecast engine
+        run: node --test test/*.test.js
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    # One deploy at a time; a newer push waits rather than cutting one off halfway.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Test forecast engine
-        run: node --test test/*.test.js
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/checkout@v5
+      # Publish only what the app and widget need, not tests or notes.
+      - name: Collect site files
+        run: |
+          mkdir _site
+          git ls-files | grep -vE '^(\.github/|test/|\.gitignore$|README\.md$|CLAUDE\.md$)' \
+            | xargs cp --parents -t _site
+          ls -R _site
+      - uses: actions/upload-pages-artifact@v4
         with:
-          path: .
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
