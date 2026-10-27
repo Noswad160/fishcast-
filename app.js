@@ -656,6 +656,13 @@ function calLine(spot) {
   if (!cal || cal.sd == null) return "";
   return `<span class="small muted">Estimate accuracy here: typically within ±${Math.max(1, Math.round(cal.sd))}°F of your ${cal.n} readings.</span>`;
 }
+// Where the water is heading over the next two days of forecast, when it moves enough to matter.
+function aheadLine(spot, cond, w) {
+  if (!cond || cond.mode !== "live") return "";
+  const t = nowHour() + 48 * hourMs, d = Math.round(waterTrend(spot, cond, w)(t) - w.v);
+  if (Math.abs(d) < 2) return "";
+  return `<span class="small muted">The forecast ${d > 0 ? "warms" : "cools"} it about ${Math.abs(d)}°F by ${dayWord(t, cond.tz)}; later scores allow for that.</span>`;
+}
 function readingSheet() {
   const spot = curSpot(), cond = cachedCond(spot.id), salt = envOf(spot) === "salt";
   const w = cond ? waterOf(spot, cond) : { v: 60, src: "estimate" }, tide = tideOf(spot), g = cond && cond.gauge, tz = cond ? cond.tz : deviceTz();
@@ -669,7 +676,7 @@ function readingSheet() {
     <div class="field"><span class="label">Your water temperature reading (°F)</span>${stepper("rdWater", w.v, 1, 32)}
       <span class="small muted">${w.tuned ? "Fishcast is estimating this from air temperatures, fitted to your readings here. Each new reading makes it more accurate." : w.src === "estimate" ? "Fishcast is estimating this from air temperatures. A thermometer reading makes the tips much better, and teaches the estimate for this spot." : w.change ? `You entered ${w.reading}°F ${fmtAgo(w.at)}. The weather since then has ${w.change > 0 ? "warmed" : "cooled"} it about ${Math.abs(w.change)}°F. Enter a new reading any time.`
         : w.gauge ? "Leave it as is to keep using the gauge. A reading you enter follows the weather for 3 days." : "Your reading follows the weather for 3 days, then the estimate (tuned by it) takes over."}</span>
-      ${calLine(spot)}</div>
+      ${calLine(spot)}${aheadLine(spot, cond, w)}</div>
     ${gaugeHtml}
     <div class="field"><span class="label">Clarity</span><div class="chips">${["clear", "stained", "muddy"].map(c => chip("radio", "rdClarity", c, c, c === clarityOf(spot))).join("")}</div></div>
     ${salt ? `<div class="field"><span class="label">Tide right now</span><div class="chips">${[["rising", "Incoming"], ["falling", "Outgoing"], ["slack", "Slack"], ["", "Not sure"]].map(([v, l]) => chip("radio", "rdTide", v, l, v === tide)).join("")}</div>

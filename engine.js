@@ -320,12 +320,13 @@ async function condFrom(spot, j, prev, airHist) {
       const wv = at("wave_height"); cond.wave = wv == null ? null : wv * 3.281;
     } catch (e) { /* marine data is optional */ }
   }
-  // The month of history, then the forecast's own past week (more up to date) for the water estimate.
-  const air = histHours(airHist).filter(h => h.t < hours[0].t).concat(hours);
+  const air = airSeries(cond);
   if (spot.water === "tailwater") { const v = tailwaterEstimate(Date.now()); cond.waterEsts = { tail: v }; cond.waterEst = Math.round(v); }
   else { cond.waterEsts = waterEstimates(air, nowHour()); cond.waterEst = waterEstimate(air, nowHour(), spot.water); }
   return cond;
 }
+// The month of history, then the forecast's own past week (more up to date) and coming days, for the water estimate.
+const airSeries = cond => histHours(cond.airHist).filter(h => h.t < cond.hours[0].t).concat(cond.hours);
 // Surface-temperature estimate from past air temps. Water lags the air: each hour counts less the older it is,
 // fading over a few days for a pond and a couple of weeks for a big reservoir, so in fall a lake stays warmer
 // than the past week's air and in spring cooler. Sunny summer water runs a little above the air average.
@@ -534,6 +535,20 @@ function waterOf(spot, cond) {
   const v = Math.round(clamp(base + (cal ? cal.off : 0), 33, 95));
   return cal && (v !== cond.waterEst || cal.n > 1) ? { v, src: "estimate, tuned to your readings", tuned: true, cal } : { v, src: "estimate", cal };
 }
+// The water temperature at another hour: today's value moved by how much the estimate changes by then, so a
+// front in the forecast cools the later days. Entered and sea-surface temperatures stay as they are.
+function waterTrend(spot, cond, water) {
+  if (cond.mode !== "live" || water.src === "sea surface") return () => water.v;
+  const now = nowHour(), cal = waterCalibration(spot), key = cal ? cal.lag : calKey(spot.water);
+  const est = key === "tail" ? t => tailwaterEstimate(t) : (air => t => laggedAir(air, t, key))(airSeries(cond));
+  const base = est(now), memo = new Map();
+  if (base == null) return () => water.v;
+  return t => {
+    t = Math.floor(t / hourMs) * hourMs;
+    if (!memo.has(t)) { const v = est(t); memo.set(t, v == null ? water.v : clamp(water.v + v - base, 33, 95)); }
+    return memo.get(t);
+  };
+}
 function clarityOf(spot) { const r = spot.reading; return (r && r.clarity && Date.now() - r.at < 3 * 864e5) ? r.clarity : (spot.clarity || "stained"); }
 function tideOf(spot) { const r = spot.reading; return (r && r.tide && Date.now() - r.tideAt < 3 * hourMs) ? r.tide : ""; }
 
@@ -564,7 +579,7 @@ const ramp = (x, a, b) => clamp((x - a) / (b - a), 0, 1);
 // (a few hundredths of an inch of pressure, a mile an hour of wind) moves the score a little, not a lot.
 function scoreHour(sp, h, ctx) {
   const f = [], add = (v, label) => { if (Math.abs(v) >= 0.5) f.push({ v: Math.round(v), label }); };
-  const L = lightAt(h.t, ctx.spot), alt = L.alt, water = ctx.water.v, fresh = ctx.env === "fresh";
+  const L = lightAt(h.t, ctx.spot), alt = L.alt, water = ctx.waterAt ? ctx.waterAt(h.t) : ctx.water.v, fresh = ctx.env === "fresh";
   const coldness = fresh ? ramp(water, 54, 46) : 0, dayness = ramp(alt, 0, 10), sunny = ramp(h.cloud, 45, 20);
   // Light: low-light peak around sunrise and sunset, night, high sun, and the warmest hours in cold water.
   const lowLight = ramp(alt, -9, -4) * ramp(alt, 13, 6);
@@ -809,6 +824,7 @@ function buildCtx(spot, cond, speciesId) {
   const water = waterOf(spot, cond), season = seasonOf(Date.now(), cond.tz, spot.lat);
   const ctx = { spot, cond, sp, spId, env, h, astro, water, season, tz: cond.tz, mode: cond.mode, wave: cond.wave, light: lightAt(now, spot).p };
   ctx.phase = phaseOf(sp, water.v, season);
+  ctx.waterAt = waterTrend(spot, cond, water);
   ctx.future = blendedScores(sp, ctx, cond.hours.filter(x => x.t >= now && x.t < now + 48 * hourMs));
   ctx.now = ctx.future[0] || blendedScores(sp, ctx, [h])[0];
   return ctx;
@@ -906,4 +922,4 @@ function skyStops({ sky, wx }) {
   return (SKIES[sky] && SKIES[sky][wx]) || DAY[wx].map(c => sky === "day" ? c : mixDark(c, DIM[sky]));
 }
 
-if (typeof module !== "undefined") module.exports = { tailwaterEstimate, livesAt, speciesFor, loadGauge, loadLive, loadLiveMany, waterEstimate, waterEstimates, waterCalibration, parseLatestOgc, trendFromOgc, usesGauge, blendedScores, whenWord, dayParts, skyStops, sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };
+if (typeof module !== "undefined") module.exports = { tailwaterEstimate, waterTrend, livesAt, speciesFor, loadGauge, loadLive, loadLiveMany, waterEstimate, waterEstimates, waterCalibration, parseLatestOgc, trendFromOgc, usesGauge, blendedScores, whenWord, dayParts, skyStops, sceneOf, scoreTrip, reportCard, BANDS, parseCoords, dayWord, fmtRange, parseGauges, milesBetween, waterOf, SPECIES, STRUCTURES, WATER_TYPES, astroEvents, moonIllum, moonPhaseName, bodyAlt, sunCoords, deriveHours, manualCond, buildCtx, headline, conditionTips, structureTip, bestWindows, phaseOf, tempFit, similarity, snapFromCtx, fmtTime, scoreLabel };

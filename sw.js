@@ -1,6 +1,6 @@
 // Offline support: serve the app shell from cache when the network is unavailable.
 // Bump VERSION whenever app files change so phones pick up the new cache.
-const VERSION = "fishcast-v36";
+const VERSION = "fishcast-v37";
 const SHELL = ["./", "index.html", "styles.css", "engine.js", "map.js", "app.js", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
 
 // GitHub Pages lets browsers reuse files for 10 minutes, so always ask the server (cache: "reload" / "no-cache");

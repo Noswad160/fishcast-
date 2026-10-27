@@ -359,3 +359,24 @@ test("a reading follows the weather after you enter it, and hands over to the es
   // No forecast (offline, typed-in conditions): the reading is used as entered.
   assert.strictEqual(E.waterOf(spot, { mode: "manual", waterEst: 70 }).v, 62);
 });
+
+test("the water temperature is projected through the forecast, so a cold front cools the later days", () => {
+  const now = Math.floor(Date.now() / 36e5) * 36e5, hours = [];
+  // A week at 75°F, then a front drops the air to 45°F from tomorrow on.
+  for (let i = -168; i < 72; i++) hours.push({ t: now + i * 36e5, air: i < 24 ? 75 : 45, pres: 30, wind: 6, dir: 180, gust: 10, cloud: 50, precip: 0, code: 2 });
+  const cond = { mode: "live", tz: -18000, fetchedAt: Date.now(), gauge: null, hours: E.deriveHours(hours) };
+  cond.waterEst = E.waterEstimate(hours, now, "pond"); cond.waterEsts = E.waterEstimates(hours, now);
+  const pond = { lat: 35.25, lon: -91.74, water: "pond", species: ["lmb"] };
+  const ctx = E.buildCtx(pond, cond, "lmb"), w = ctx.water.v;
+  assert.strictEqual(ctx.waterAt(now), w, "now is today's value");
+  assert.strictEqual(ctx.waterAt(now + 12 * 36e5), w, "no change before the front");
+  assert.ok(ctx.waterAt(now + 60 * 36e5) < w - 5, `cooled from ${w} to ${ctx.waterAt(now + 60 * 36e5)}`);
+  // A reservoir cools more slowly than a pond.
+  const res = E.buildCtx({ ...pond, water: "reservoir" }, cond, "lmb");
+  assert.ok(w - ctx.waterAt(now + 60 * 36e5) > res.water.v - res.waterAt(now + 60 * 36e5));
+  // A thermometer reading moves by the same amount; typed-in conditions don't move.
+  const read = E.buildCtx({ ...pond, reading: { water: 70, at: now, waterAt: now } }, cond, "lmb");
+  assert.strictEqual(Math.round(read.waterAt(now + 60 * 36e5) - 70), Math.round(ctx.waterAt(now + 60 * 36e5) - w));
+  const typed = ctxWith(base);
+  assert.strictEqual(typed.waterAt(now + 60 * 36e5), typed.water.v);
+});
